@@ -1,6 +1,6 @@
 /*
  *  argopt, a library to parse command line options.
- *  Copyright (C) 2003-2012 Jules Colding <jcolding@gmail.com>
+ *  Copyright (C) 2003-2013, Jules Colding <jcolding@gmail.com>
  *
  *  This file is part of argopt.
  *
@@ -156,8 +156,8 @@ argopt(int argc,
        int *index,
        char **parameter) /* must be free()'ed if not NULL on return */
 {
-        static unsigned int argv_idx = 0;
-        static unsigned int push_count = 0;
+        static int argv_idx = 0;
+        static int push_count = 0;
         int opt_index = 0;
 
         if (!options)
@@ -270,9 +270,9 @@ argopt_help(FILE *output,
             const char * const prog,
             const struct option_t * const options)
 {
-        int n = 0;
-        int lmax = 0;
-        const int space = 4;
+        size_t n = 0;
+        size_t lmax = 0;
+        const size_t space = 4;
         int opt_index = 0;
 
         if (!options)
@@ -322,9 +322,9 @@ argopt_completions(FILE *output,
                    const struct option_t * const options)
 {
         int i = 0;
-        int n = 0;
         int opt_count = 0;
-        int lmax = 0;
+        size_t n = 0;
+        size_t lmax = 0;
         const int space = 4;
         size_t opt_len = 0;
         int *amb_array = NULL;
