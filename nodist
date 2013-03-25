@@ -1,8 +1,0 @@
-
-This files makes the local IDL files be preserved across 
-a "make distclean" if the directory is from a distribution.
-
-This file will not be present in a distribution. The local
-IDL files will be deleted by "make distclean" if this file 
-is present.
-
