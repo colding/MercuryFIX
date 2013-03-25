@@ -18,8 +18,7 @@ SUBDIRS = \
 	utillib \
 	omslib  \
 	applib  \
-	servers \
-	test
+	servers
 
 ACLOCAL_AMFLAGS = -I m4
 
@@ -31,25 +30,7 @@ endif
 
 DISTCLEANFILES = aclocal.m4 intltool-extract intltool-merge intltool-update iconv-detect.c Makefile *.tar.gz $(CLEAN_IN_FILES)
 
-EXTRA_DIST = \
-	docs \
-	autogen.sh \
-	$(AC_PACKAGE_NAME).spec \
-	$(AC_PACKAGE_NAME).spec.in
+EXTRA_DIST = docs 
 
 clean-local:
 	rm -f state.scm
-
-dist-rpm:
-if MERCURY_RPMDEV_SETUPTREE
-	rpmdev-setuptree
-endif
-if MERCURY_RPMDEV_WIPETREE
-	rpmdev-wipetree
-endif
-	make
-#	make dist
-#	cp $(CWD)/$(AC_PACKAGE_NAME).spec $(HOME)/rpmbuild/SPECS/
-#	cp $(CWD)/$(AC_PACKAGE_NAME)-$(MERCURY_VERSION).tar.gz $(HOME)/rpmbuild/SOURCES/
-#	cd $(HOME)/rpmbuild/SPECS && rpmbuild -ba $(AC_PACKAGE_NAME).spec
-

@@ -49,7 +49,6 @@ srcdir=${srcdir:-.}
 
 (test -f $srcdir/configure.ac \
   && test -f $srcdir/Makefile.am \
-  && test -f $srcdir/ChangeLog \
   && test -d $srcdir/stdlib \
   && test -f $srcdir/stdlib/Makefile.am) || {
     printerr "**Error**: Directory '$(pwd)' does not look like the top-level $PKG_NAME directory"
@@ -80,10 +79,10 @@ if test "x$1" = "xnoreconf"; then
     autoconf
 
     printbold "Running Automake..."
-    automake --warnings=all --Werror --gnu --add-missing --force --copy 
+    automake --warnings=all --Werror --force --copy 
 else
     printbold "Running autoreconf..."
-    autoreconf --warnings=all --force --verbose --install
+    autoreconf --warnings=all --force --verbose
 fi
 
 

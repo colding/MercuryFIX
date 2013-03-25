@@ -10,13 +10,13 @@
 #
 
 AC_PREREQ([2.68])
-AC_INIT([Mercury],[0.0.1],[jcolding@gmail.com])
+AC_INIT([MercuryFIX],[0.0.1],[jcolding@gmail.com])
 AC_COPYRIGHT([Copyright (C) 2013, Jules Colding. All Rights Reserved.])
 
 # For GCC extensions
 AC_USE_SYSTEM_EXTENSIONS
 
-AC_CONFIG_SRCDIR([mercury.spec.in])
+AC_CONFIG_SRCDIR([support_files])
 AC_CONFIG_HEADERS([ac_config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -540,10 +540,6 @@ AC_CONFIG_FILES([Makefile
  		 servers/Makefile
 		 servers/generic/Makefile
 		 servers/versatile/Makefile
-		 test/Makefile	
-		 test/server_start/Makefile
-		 test/ipc/Makefile
-                 test/disruptor/Makefile
 	 ])
 AC_OUTPUT
 
