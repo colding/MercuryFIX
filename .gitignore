@@ -35,7 +35,6 @@ stamp-h1
 .libs
 mtest
 scm_state_snapshot
-INSTALL
 ar-lib
 versatile
 test-driver

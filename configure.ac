@@ -341,12 +341,10 @@ case "x$target" in
 	xDarwin)
 	AM_CONDITIONAL(OS_DARWIN, true)
 	AM_CONDITIONAL(OS_LINUX, false)
-	AC_DEFINE([MERCURY_DEFAULT_CONFIG_FILE], ["/Users/colding/work/projects/mercury/core/support_files/mercury.conf"], [Default Mecury configuration file])
 	;;
 	xLinux)
 	AM_CONDITIONAL(OS_DARWIN, false)
 	AM_CONDITIONAL(OS_LINUX, true)
-	AC_DEFINE([MERCURY_DEFAULT_CONFIG_FILE], ["/home/colding/work/src/mercury/core/support_files/mercury.conf"], [Default Mecury configuration file])
 	;;
 	*)
 	AC_MSG_ERROR([Mercury is not supported on this operating system])
@@ -369,46 +367,11 @@ else
 fi
 AM_CONDITIONAL(MERCURY_DEBUG, test "x$enable_debug" = "xyes")
 
-AC_ARG_ENABLE(tests,
-	      [AS_HELP_STRING([--enable-tests[[[[=no/yes]]]]], [Enable build of the Mercury test suite [default=yes]])],
- 	      [],						   
- 	      enable_tests=yes)
-if test "x$enable_tests" = "xyes"; then
-	msg_tests=yes
-else
-	msg_tests=no
-fi
-AM_CONDITIONAL(MERCURY_TESTS, test "x$enable_tests" = "xyes")
 
 dnl
 dnl Program availability checks
 dnl
-AC_CHECK_PROG(HAVE_RPMBUILD, [rpmbuild], yes, no)
-if test "x$HAVE_RPMBUILD" = "xno"; then
-   AM_CONDITIONAL(MERCURY_RPMBUILD, false)
-   AC_MSG_WARN([[You will need the rpmbuild(8) program to build Mercury RPMs]])
 
-   AM_CONDITIONAL(MERCURY_RPMDEV_WIPETREE, false)
-   AM_CONDITIONAL(MERCURY_RPMDEV_SETUPTREE, false)
-else
-   AM_CONDITIONAL(MERCURY_RPMBUILD, true)
-
-   AC_CHECK_PROG(HAVE_RPMDEV_SETUPTREE, [rpmdev-setuptree], yes, no)
-   if test "x$HAVE_RPMDEV_SETUPTREE" = "xno"; then
-      AM_CONDITIONAL(MERCURY_RPMDEV_SETUPTREE, false)
-      AC_MSG_WARN([[You should have the rpmdev-setuptree program if building Mercury RPMs]])
-   else
-      AM_CONDITIONAL(MERCURY_RPMDEV_SETUPTREE, true)
-   fi
-
-   AC_CHECK_PROG(HAVE_RPMDEV_WIPETREE, [rpmdev-wipetree], yes, no)
-   if test "x$HAVE_RPMDEV_WIPETREE" = "xno"; then
-      AM_CONDITIONAL(MERCURY_RPMDEV_WIPETREE, false)
-      AC_MSG_WARN([[You should have the rpmdev-wipetree program if building Mercury RPMs]])
-   else
-      AM_CONDITIONAL(MERCURY_RPMDEV_WIPETREE, true)
-   fi
-fi
 
 dnl
 dnl CPPFLAGS, CXXFLAGS, LIBS and stuff
@@ -516,7 +479,6 @@ dnl Makefiles
 dnl ******************************
 
 AC_CONFIG_FILES([Makefile
-                 docs/Makefile
                  stdlib/Makefile
                  stdlib/cmdline/Makefile
                  stdlib/config/Makefile
