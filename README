@@ -1,4 +1,24 @@
 MercuryFIX
 ==========
 
-MercuryFIX is a FIX server in the making. Not at all usable or even halfway finished yet, but you're welcome to take a look. I will dump code here over the next few days.
+MercuryFIX is a FIX server in the making. Not at all usable or even
+halfway finished yet, but you're welcome to take a look. 
+
+Doing
+=====
+
+Currently I'm working with the FIX IO library (utillib/fixio). When
+that is done I'll move on to session management, or that is the plan
+anyways.
+
+
+TODO
+==== 
+
+* Cook up some code to let SQLite store and retrieve sent messages and
+  the latest recieved sequence number.
+
+* Do something about the configuration classes. They are way too
+  complex.
+
+* Move to DB based configuration while I'm at it.
