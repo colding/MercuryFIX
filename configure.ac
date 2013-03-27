@@ -75,7 +75,7 @@ AC_TYPE_UINT8_T
 
 # Checks for library functions.
 AC_FUNC_FORK
-AC_CHECK_FUNCS([dup2 malloc ftruncate])
+AC_CHECK_FUNCS([dup2 malloc ftruncate memmem])
 
 #
 # Check implementation details of build host
