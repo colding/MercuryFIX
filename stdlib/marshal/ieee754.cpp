@@ -139,12 +139,12 @@ pack754_64(double val)
 float
 unpack754_32(uint32_t val)
 {
-	return pack754(val, 32, 8);
+	return unpack754(val, 32, 8);
 }
 
 double
 unpack754_64(uint64_t val)
 {
-	return pack754(val, 64, 11);
+	return unpack754(val, 64, 11);
 }
 

@@ -73,7 +73,7 @@ get_cpu_count(void)
 static inline int
 get_cpu_count(void)
 {
-        int cnt = -1;
+        int cnt;
 
         cnt = sysconf(_SC_NPROCESSORS_ONLN);
         if (-1 == cnt) {

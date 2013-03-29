@@ -69,7 +69,7 @@ generate_default_ids(std::vector<std::string> & IDs)
                 return false;
         }
 
-        IDs.empty();
+        IDs.clear();
         std::string id;
         for (int n = 0; n < cpu_cnt; ++n) {
                 id = host_name;

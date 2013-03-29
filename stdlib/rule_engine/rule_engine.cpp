@@ -154,7 +154,7 @@ evaluate_criteria(char **expression,
 	const unsigned int criteria_id = strtoul(*expression, expression, 16);
 	if (!criteria_id && (EINVAL == errno))
 	{
-		d("BUUUUG! Criteria ID = %d", criteria_id);
+		d("BUUUUG! Criteria ID = %u", criteria_id);
 		return false; // BUG - log and scream or else?
 	}
 
@@ -162,7 +162,7 @@ evaluate_criteria(char **expression,
 	CriteriaCache::const_iterator cit = criteria_cache->find(criteria_id);
 	if (criteria_cache->end() == cit)
 	{
-		d("Error! Criteria ID = %d", criteria_id);
+		d("Error! Criteria ID = %u", criteria_id);
 		return false; // configuration error - log
 	}
 

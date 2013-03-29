@@ -101,7 +101,7 @@ FIX_Session_Instance::init(void *data)
 bool
 FIX_Session_Instance::run(void)
 {
-	int retv;
+	int retv = 0;
 	pthread_t thread_id;
 	InstanceArgs *args = NULL;
 

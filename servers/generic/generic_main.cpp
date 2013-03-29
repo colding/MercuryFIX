@@ -245,7 +245,7 @@ start_server(const bool debug,
                 return EXIT_FAILURE;
         }
 	vector_item->release();
-        if (!IDs.size())
+        if (IDs.empty())
                 generate_default_ids(IDs);
 
         sig_act.sa_handler = SIG_IGN;
@@ -442,6 +442,8 @@ slave:
         // create slave IPC thread
         socket.socket = ipc_sockets[SLAVE_SOCKET];
         thread_arg = create_thread_arg(master_identity, config->config_source, socket);
+	free(master_identity);
+	master_identity = NULL;
         if (!thread_arg) {
 		M_ALERT("no memory");
                 return EXIT_FAILURE;
@@ -494,6 +496,7 @@ slave:
         retv = EXIT_SUCCESS;
 
 slave_err:
+	free(master_identity);
         return retv;
 }
 

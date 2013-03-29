@@ -64,7 +64,7 @@ sigchld_handler(int /* sig */)
 daemon_exit_t
 become_daemon(void)
 {
-        pid_t pid = -1;
+        pid_t pid;
         struct sigaction sig_act;
 
         // do not create zombies
