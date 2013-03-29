@@ -18,7 +18,7 @@ A FIX server which:
   sense
 
 
-Doing
+DOING
 =====
 
 Currently I'm working with the FIX IO library (utillib/fixio). When
@@ -37,4 +37,4 @@ TODO
 
 * Move to DB based configuration while I'm at it.
 
-* Make a reasonable sesison implementation
+* Make a reasonable session implementation
