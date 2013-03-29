@@ -202,7 +202,7 @@ get_flag(int *flag)
  * included in the checksum calculation. len is the number of bytes
  * included in the checksum calculation.
  */
-static inline int
+static inline unsigned int
 get_FIX_checksum(char *msg, size_t len)
 {
         uint64_t sum = 0;
@@ -473,7 +473,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         int total_prefix_length;
         int body_length_digits;
         int msg_seq_number_digits;
-        int checksum;
+        unsigned int checksum;
 
         ++(*msg_seq_number);
         msg_seq_number_digits = get_digit_count(*msg_seq_number);
@@ -495,7 +495,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 
         // add final checksum
         checksum = get_FIX_checksum(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length], total_prefix_length + *data_length - 3);
-        sprintf(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *data_length], "%03d", checksum);
+        sprintf(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *data_length], "%03u", checksum);
         buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *data_length + FIX_BUFFER_RESERVED_TAIL] = SOH;
 
         // adjust data length to new value
