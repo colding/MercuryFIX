@@ -46,4 +46,8 @@
  */
 #define SOH '\1'
 
+/*
+ * The end field of all FIX messages
+ */
+#define FIX_END_MARKER "\1""10="
 

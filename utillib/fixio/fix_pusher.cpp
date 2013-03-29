@@ -135,8 +135,10 @@
  *
  */
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/uio.h>
 
@@ -170,7 +172,8 @@
  */
 #define MSG_TYPE_MAX_LENGTH (16)
 
-struct pusher_thread_args {
+struct pusher_thread_args_t {
+	bool flushing;
         int *terminate;
         int *running;
         int *error;
@@ -185,13 +188,13 @@ struct pusher_thread_args {
 static inline void
 set_flag(int *flag, int val)
 {
-        __atomic_store_n(flag, val, __ATOMIC_SEQ_CST);
+        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
 }
 
 static inline int
 get_flag(int *flag)
 {
-        return __atomic_load_n(flag, __ATOMIC_SEQ_CST);
+        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
 }
 
 /*
@@ -379,7 +382,7 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_)
  * session is new.
  */
 static uint64_t
-get_msg_seq_number(void)
+get_latest_msg_seq_number_sent(void)
 {
         return 0;
 }
@@ -464,7 +467,7 @@ static const char*
 complete_FIX_message(uint64_t * const msg_seq_number,
                      char * const buffer,
                      size_t *data_length,
-                     const struct pusher_thread_args * const args)
+                     const struct pusher_thread_args_t * const args)
 {
         size_t body_length;
         int total_prefix_length;
@@ -502,10 +505,11 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 }
 
 static int
-push_alfa(struct cursor_t * const alfa_cursor,
+push_alfa(const bool /* flushing */,
+	  struct cursor_t * const alfa_cursor,
           const struct count_t * const alfa_reg_number,
           uint64_t * const msg_seq_number,
-          struct pusher_thread_args * const args,
+          struct pusher_thread_args_t * const args,
           struct iovec * const vdata)
 {
         int retv;
@@ -549,10 +553,11 @@ push_alfa(struct cursor_t * const alfa_cursor,
 }
 
 static int
-push_bravo(struct cursor_t * const bravo_cursor,
+push_bravo(const bool /* flushing */,
+	   struct cursor_t * const bravo_cursor,
            const struct count_t * const bravo_reg_number,
            uint64_t * const msg_seq_number,
-           struct pusher_thread_args * const args,
+           struct pusher_thread_args_t * const args,
            struct iovec * const vdata)
 {
         int retv;
@@ -596,10 +601,11 @@ push_bravo(struct cursor_t * const bravo_cursor,
 }
 
 static int
-push_charlie(struct cursor_t * const charlie_cursor,
+push_charlie(const bool /* flushing */,
+	     struct cursor_t * const charlie_cursor,
              const struct count_t * const charlie_reg_number,
              uint64_t * const msg_seq_number,
-             struct pusher_thread_args * const args,
+             struct pusher_thread_args_t * const args,
              struct iovec * const vdata)
 {
         int retv;
@@ -642,6 +648,9 @@ push_charlie(struct cursor_t * const charlie_cursor,
         return 0;
 }
 
+/*
+ * This function will NOT free arg
+ */
 void*
 pusher_thread_func(void *arg)
 {
@@ -657,25 +666,24 @@ pusher_thread_func(void *arg)
         struct cursor_t charlie_cursor;
         struct count_t charlie_reg_number;
 
-        struct pusher_thread_args *args = (struct pusher_thread_args*)arg;
+        struct pusher_thread_args_t *args = (struct pusher_thread_args_t*)arg;
         if (!args) {
                 M_ERROR("pusher thread cannot run");
-		set_flag(args->error, ENOMEM);
-                return NULL;
+		abort();
         }
 
         struct iovec *vdata = (struct iovec*)malloc(sizeof(struct iovec)*IOV_MAX);
         if (!vdata) {
-                free(args);
                 M_ALERT("no memory");
 		set_flag(args->error, ENOMEM);
+		set_flag(args->running, 0);
                 return NULL;
         }
 
         // Get last message sequence number sent - tag 34.  The
-	// sequence numvber will be incremented whenever a message is
+	// sequence number will be incremented whenever a message is
 	// sent.
-        msg_seq_number = get_msg_seq_number();
+        msg_seq_number = get_latest_msg_seq_number_sent();
 
         //
         // register entry processors
@@ -684,32 +692,33 @@ pusher_thread_func(void *arg)
         bravo_cursor.sequence = bravo_entry_processor_barrier_register(args->bravo, &bravo_reg_number);
         charlie_cursor.sequence = charlie_entry_processor_barrier_register(args->charlie, &charlie_reg_number);
 
-        // push data into sink until told to stop
-        while (!get_flag(args->terminate)) {
+        // Push data into sink until told to stop. I'm using a
+        // do-while because then I can use this function to flush the
+        // disruptors as well.
+        do {
                 // alfa
-                rval = push_alfa(&alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
+                rval = push_alfa(args->flushing, &alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // bravo
-                rval = push_bravo(&bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
+                rval = push_bravo(args->flushing, &bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // charlie
-                rval = push_charlie(&charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
+                rval = push_charlie(args->flushing, &charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
-        }
+        } while (!get_flag(args->terminate));
 out:
         free(vdata);
-        free(args);
         alfa_entry_processor_barrier_unregister(args->alfa, &alfa_reg_number);
         bravo_entry_processor_barrier_unregister(args->bravo, &bravo_reg_number);
         charlie_entry_processor_barrier_unregister(args->charlie, &charlie_reg_number);
@@ -723,107 +732,92 @@ FIX_Pusher::FIX_Pusher(int sink_fd)
         : alfa_max_data_length_(ALFA_MAX_DATA_SIZE),
           charlie_max_data_length_(CHARLIE_MAX_DATA_SIZE)
 {
-        set_flag(&running_, 0);
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
         sink_fd_ = sink_fd;
-        terminate_ = 0;
+	dev_null_ = -1;
         error_ = 0;
         alfa_ = NULL;
         bravo_ = NULL;
         charlie_ = NULL;
-}
-
-FIX_Pusher::~FIX_Pusher()
-{
-	int n;
-
+	args_ = NULL;
+        set_flag(&running_, 0);
         set_flag(&terminate_, 1);
-        if (get_flag(&running_))
-                pthread_join(pusher_thread_id_, NULL);
-
-	for (n = 0; n < BRAVO_QUEUE_LENGTH; ++n) 
-		free(bravo_->buffer[n].content.data);
-        free(bravo_);
-        free(charlie_);
-        free(alfa_);
-	if (-1 != sink_fd_)
-		close(sink_fd_);
 }
 
 bool
 FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
 {
-        pusher_thread_args *args = NULL;
+	stop();
 
-        if (!FIX_ver) {
+	if (sizeof(FIX_start_bytes_) - 1 > strlen(FIX_ver))
+		goto err;
+        if (!FIX_start_bytes_[0] && !FIX_ver) {
                 M_ALERT("no FIX version specified");
                 goto err;
         }
-        sprintf(FIX_start_bytes_, "8=%s%c9=", FIX_ver, SOH);
+        snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, SOH);
         FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
 
-	if (-1 != sink_fd)
+	if (-1 != sink_fd) {
+		if (sink_fd_)
+			close(sink_fd_);
 		sink_fd_ = sink_fd;
+	}
+	if (-1 == dev_null_) {
+		dev_null_ = open("/dev/null", O_WRONLY);
+		if (-1 == dev_null_) {
+			M_ALERT("could not open /dev/null: %s", strerror(errno));
+			goto err;
+		}
+	}
 	
-        alfa_ = alfa_ring_buffer_malloc();
-        if (!alfa_) {
-                M_ALERT("no memory");
-                goto err;
-        }
-        alfa_ring_buffer_init(alfa_);
+	if (!alfa_) {
+		alfa_ = alfa_ring_buffer_malloc();
+		if (!alfa_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		alfa_ring_buffer_init(alfa_);
+	}
 
-        bravo_ = bravo_ring_buffer_malloc();
-        if (!bravo_) {
-                M_ALERT("no memory");
-                goto err;
-        }
-        bravo_ring_buffer_init(bravo_);
+	if (!bravo_) {
+		bravo_ = bravo_ring_buffer_malloc();
+		if (!bravo_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		bravo_ring_buffer_init(bravo_);
+	}
 
-        charlie_ = charlie_ring_buffer_malloc();
-        if (!charlie_) {
-                M_ALERT("no memory");
-                goto err;
-        }
-        charlie_ring_buffer_init(charlie_);
+	if (!charlie_) {
+		charlie_ = charlie_ring_buffer_malloc();
+		if (!charlie_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		charlie_ring_buffer_init(charlie_);
+	}
 
-        args = (pusher_thread_args*)malloc(sizeof(pusher_thread_args));
-        if (!args) {
+	free(args_);
+        args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
+        if (!args_) {
                 M_ALERT("no memory");
                 goto err;
         }
-        args->terminate = &terminate_;
-        args->running = &running_;
-        args->sink_fd = sink_fd_;
-        args->error = &error_;
-        args->alfa = alfa_;
-        args->bravo = bravo_;
-        args->charlie = charlie_;
-        args->FIX_start = FIX_start_bytes_;
-        args->FIX_start_length = FIX_start_bytes_length_;
-        if (!create_joinable_thread(&pusher_thread_id_, args, pusher_thread_func)) {
-                M_ALERT("could not create pusher thread");
-                goto err;
-        }
-        set_flag(&running_, 1);
+	args_->flushing = false;
+        args_->terminate = &terminate_;
+        args_->running = &running_;
+        args_->sink_fd = sink_fd_;
+        args_->error = &error_;
+        args_->alfa = alfa_;
+        args_->bravo = bravo_;
+        args_->charlie = charlie_;
+        args_->FIX_start = FIX_start_bytes_;
+        args_->FIX_start_length = FIX_start_bytes_length_;
 
         return true;
 err:
-	if (-1 != sink_fd_)
-		close(sink_fd_);
-	sink_fd_ = -1;
-
-        free(args);
-
-        free(charlie_);
-        charlie_ = NULL;
-
-        free(bravo_);
-        bravo_ = NULL;
-
-        free(alfa_);
-        alfa_ = NULL;
-
         return false;
 }
 
@@ -832,6 +826,10 @@ FIX_Pusher::push(const size_t len,
                  const void * const data,
                  char * const msg_type)
 {
+        struct cursor_t alfa_cursor;
+        struct alfa_entry_t *alfa_entry;
+        struct cursor_t bravo_cursor;
+        struct bravo_entry_t *bravo_entry;
         const size_t strl = strnlen(msg_type, FIX_BUFFER_RESERVED_HEAD);
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
@@ -839,34 +837,34 @@ FIX_Pusher::push(const size_t len,
 		
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (LIKELY(len <= (alfa_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
-                alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor_);
-                alfa_entry_ = alfa_ring_buffer_acquire_entry(alfa_, &alfa_cursor_);
+                alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor);
+                alfa_entry = alfa_ring_buffer_acquire_entry(alfa_, &alfa_cursor);
 
-                setul(alfa_entry_->content, len);
-                strcpy((char*)alfa_entry_->content + sizeof(uint32_t), msg_type);
-                memcpy(alfa_entry_->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
+                setul(alfa_entry->content, len);
+                strcpy((char*)alfa_entry->content + sizeof(uint32_t), msg_type);
+                memcpy(alfa_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                alfa_publisher_port_commit_entry_blocking(alfa_, &alfa_cursor_);
+                alfa_publisher_port_commit_entry_blocking(alfa_, &alfa_cursor);
         } else {
-                bravo_publisher_port_next_entry_blocking(bravo_, &bravo_cursor_);
-                bravo_entry_ = bravo_ring_buffer_acquire_entry(bravo_, &bravo_cursor_);
+                bravo_publisher_port_next_entry_blocking(bravo_, &bravo_cursor);
+                bravo_entry = bravo_ring_buffer_acquire_entry(bravo_, &bravo_cursor);
 
                 // either the first time and therefore NULL or
                 // something allocated from a previous parse. So we
                 // reuse or allocate new memory. This migth lead to
                 // some interresting memory pressure once it has run
                 // for a while...
-                if (bravo_entry_->content.size >= len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
-                        bravo_entry_->content.size = len;
+                if (bravo_entry->content.size >= len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
+                        bravo_entry->content.size = len;
                 } else {
-                        free(bravo_entry_->content.data);
-                        bravo_entry_->content.size = len;
-                        bravo_entry_->content.data = malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
+                        free(bravo_entry->content.data);
+                        bravo_entry->content.size = len;
+                        bravo_entry->content.data = malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
                 }
-                strcpy((char*)bravo_entry_->content.data, msg_type);
-                memcpy((char*)bravo_entry_->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
+                strcpy((char*)bravo_entry->content.data, msg_type);
+                memcpy((char*)bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor_);
+                bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
         }
 
 	return get_flag(&error_);
@@ -877,6 +875,8 @@ FIX_Pusher::session_push(const size_t len,
                          const void * const data,
                          char * const msg_type)
 {
+        struct cursor_t charlie_cursor;
+        struct charlie_entry_t *charlie_entry;
         const size_t strl = strnlen(msg_type, FIX_BUFFER_RESERVED_HEAD);
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
@@ -886,15 +886,62 @@ FIX_Pusher::session_push(const size_t len,
         if (UNLIKELY(len > (charlie_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
                 M_CRITICAL("session message oversized");
         } else {
-                charlie_publisher_port_next_entry_blocking(charlie_, &charlie_cursor_);
-                charlie_entry_ = charlie_ring_buffer_acquire_entry(charlie_, &charlie_cursor_);
+                charlie_publisher_port_next_entry_blocking(charlie_, &charlie_cursor);
+                charlie_entry = charlie_ring_buffer_acquire_entry(charlie_, &charlie_cursor);
 
-                setul(charlie_entry_->content, len);
-                strcpy((char*)charlie_entry_->content + sizeof(uint32_t), msg_type);
-                memcpy(charlie_entry_->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
+                setul(charlie_entry->content, len);
+                strcpy((char*)charlie_entry->content + sizeof(uint32_t), msg_type);
+                memcpy(charlie_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                charlie_publisher_port_commit_entry_blocking(charlie_, &charlie_cursor_);
+                charlie_publisher_port_commit_entry_blocking(charlie_, &charlie_cursor);
         }
 
 	return get_flag(&error_);
 }
+
+void
+FIX_Pusher::flush(void)
+{
+        int n;
+	int fd;
+
+	stop();
+
+	fd = sink_fd_;
+	sink_fd_ = dev_null_;
+	args_->flushing = true;
+	pusher_thread_func(args_);
+	args_->flushing = false;
+
+	for (n = 0; n < BRAVO_QUEUE_LENGTH; ++n) {
+		free(bravo_->buffer[n].content.data);
+		bravo_->buffer[n].content.size = 0;
+		bravo_->buffer[n].content.data = NULL;
+	}
+	sink_fd_ = fd;
+
+	start();
+}
+
+void
+FIX_Pusher::stop(void)
+{
+        set_flag(&terminate_, 1);
+        if (get_flag(&running_))
+                pthread_join(pusher_thread_id_, NULL);
+}
+
+void
+FIX_Pusher::start(void)
+{
+        set_flag(&terminate_, 0);
+        if (get_flag(&running_))
+		return;
+
+        if (!create_joinable_thread(&pusher_thread_id_, args_, pusher_thread_func)) {
+                M_ALERT("could not create pusher thread");
+                abort();
+        }
+        set_flag(&running_, 1);
+}
+

@@ -52,6 +52,16 @@ struct charlie_io_t;
 struct delta_io_t;
 struct echo_io_t;
 struct foxtrot_io_t;
+struct pusher_thread_args_t;
+struct sucker_thread_args_t;
+struct splitter_thread_args_t;
+
+/*
+ * Outstanding issue: Do Popper and Pusher instances live forever? If
+ * yes, how do I handle socket errors with blocking disruptor
+ * functions? Hmm, amswer: The disruptors live forever, but the socket
+ * must be re-initialisaible independently from the disruptors.
+ */
 
 
 /*
@@ -66,14 +76,22 @@ public:
 	 */
         FIX_Pusher(int sink_fd);
 
-        virtual ~FIX_Pusher();
-
         /*
-         * Allocates and initializes private members.
+         * Allocates and initializes private members. It may be called
+         * repeatedly, but only from one thread.
          *
          * FIX_ver must be in the format of "FIX.X.Y" or in the case
-         * of FIX 5.x "FIXT.1.1". It must in other words be a valid
-         * value for tag 8, BeginString.
+         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
+         * be a valid value for tag 8, BeginString.
+	 *
+	 * If sink_fd if different from -1 it will be used as the new
+	 * sink. 
+	 *
+	 * The FIX_Pusher instance takes ownership of the sink_fd file
+	 * descriptor.
+	 *
+	 * This method calls stop(), but not start(). You must call
+	 * start().
          */
         bool init(const char * const FIX_ver,
 		  int sink_fd);
@@ -98,10 +116,38 @@ public:
 
         /*
          * Please see FIX_Pusher::push() for the data format.
+	 *
+	 * Only one thread must call this method.
          */
         int session_push(const size_t len, 
 			 const void * const data,
 			 char * const msg_type);
+
+	/*
+	 * Flushes stale content.
+	 *
+	 * All, if any, data still present within the FIX_Pusher
+	 * instance will be flushed to /dev/null and logged as not
+	 * sent when this method is called.
+	 *
+	 * Only one thread must call this method.
+	 */ 
+	void flush(void);
+
+	/*
+	 * Stops the pushing of message into the sink.
+	 *
+	 * Only one thread must call this method.
+	 */ 
+	void stop(void);
+
+	/*
+	 * Starts the pushing of message into the sink.
+	 *
+	 * Only one thread must call this method.
+	 */ 
+	void start(void);
+
 private:
         /*
          * Default constructor disallowed
@@ -121,6 +167,13 @@ private:
                 {
                 };
 
+	/*
+	 * This object must live forever
+	 */
+	~FIX_Pusher()
+		{
+		};
+
         /*
          * Assignemnt operator disallowed
          */
@@ -129,27 +182,23 @@ private:
                         return *this;
                 };
 
-        char FIX_start_bytes_[16];   // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
-        int FIX_start_bytes_length_; // strlen of FIX version field
-        int error_;                  // errno from the pusher thread running
-        int running_;                // is the pusher thread running?
-        int terminate_;              // terminate the pusher thread running
-        pthread_t pusher_thread_id_; // the pusher thread ID
+        char FIX_start_bytes_[16];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
+        int FIX_start_bytes_length_;        // strlen of FIX version field
+        int error_;                         // errno from the pusher thread
+        int running_;                       // is the pusher thread running?
+        int terminate_;                     // terminate the pusher thread running
+        pthread_t pusher_thread_id_;        // the pusher thread ID
+	struct pusher_thread_args_t *args_; // parameters for the pusher thread
 
         int sink_fd_; // the file descriptor of the socket sink
+	int dev_null_; // needed as sink to flush old messages 
 
         alfa_io_t *alfa_;
-        struct cursor_t alfa_cursor_;
-        struct alfa_entry_t *alfa_entry_;
         const size_t alfa_max_data_length_;
 
         bravo_io_t *bravo_;
-        struct cursor_t bravo_cursor_;
-        struct bravo_entry_t *bravo_entry_;
 
         charlie_io_t *charlie_;
-        struct cursor_t charlie_cursor_;
-        struct charlie_entry_t *charlie_entry_;
         const size_t charlie_max_data_length_;
 };
 
@@ -160,28 +209,70 @@ public:
 	/* 
 	 * Call this with a valid file descriptor or -1
 	 */
-        FIX_Popper(const int source_fd);
-
-        virtual ~FIX_Popper();
+        FIX_Popper(int source_fd);
 
         /*
-         * Allocates and initializes private members
+         * Allocates and initializes private members. It may be called
+         * repeatedly, but only from one thread.
+         *
+         * FIX_ver must be in the format of "FIX.X.Y" or in the case
+         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
+         * be a valid value for tag 8, BeginString.
+	 *
+	 * If source_fd if different from -1 it will be used as the
+	 * new source.
+	 *
+	 * The FIX_Popper instance takes ownership of the source_fd
+	 * file descriptor.
+	 *
+	 * This method calls stop(), but not start(). You must call
+	 * start().
          */
-        bool init(void);
+        bool init(const char * const FIX_ver, int source_fd);
 
         /*
-         *  threadsafe - each pop will read one complete message from
-         *  the source.
+         * threadsafe - each pop will read one complete message from
+         * the source. Callee takes ownership of data and must free
+         * it when done processing. A pop will never return the same
+         * entry twize regardless of whether it is called from
+         * separate threads or not.
+	 *
+	 * len is the total length of the message, not the value of
+	 * tag 9, BodyLength.
          */
-        int pop(const size_t len, 
-		void * const data);
+        int pop(size_t * const len, 
+		void **data);
 
         /*
-         *  threadsafe - each pop will read one complete message from
-         *  the source.
+         * threadsafe - each pop will return a non-const pointer to a
+         * complete message which must be processed in situ or
+         * copied.
+	 *
+	 * len is the total length of the message, not the value of
+	 * tag 9, BodyLength.
+	 *
+	 * Only one thread must call this method.
+	 *
+	 * Return value is zero if all is well, or an errno value if
+	 * not. 
          */
         int session_pop(const size_t len,
-                        void * const data);
+                        void *data);
+
+	/*
+	 * Stops the popping of message of the source.
+	 *
+	 * Only one thread must call this method.
+	 */ 
+	void stop(void);
+
+	/*
+	 * Starts the popping of message of the source.
+	 *
+	 * Only one thread must call this method.
+	 */ 
+	void start(void);
+
 private:
         /*
          * Default constructor disallowed
@@ -201,6 +292,13 @@ private:
                 {
                 };
 
+	/*
+	 * This object must live forever
+	 */
+	~FIX_Popper()
+                {
+                };
+
         /*
          * Assignemnt operator disallowed
          */
@@ -209,10 +307,20 @@ private:
                         return *this;
                 };
 
-        const size_t echo_max_data_length_;
-        const size_t foxtrot_max_data_length_;
         int source_fd_;
+	char begin_string_[32];                        // 8="FIX ver"<SOH>9="
+        int error_;                                    // errno from the sucker thread
+        int running_;                                  // is the sucker thread running?
+        int terminate_;                                // terminate the sucker thread running
+        pthread_t sucker_thread_id_;                   // the sucker thread ID
+	struct sucker_thread_args_t *sucker_args_;     // parameters for the sucker thread
+	struct splitter_thread_args_t *splitter_args_; // parameters for the splitter thread
+
         delta_io_t *delta_;
+
         echo_io_t *echo_;
+        const size_t echo_max_data_length_;
+
         foxtrot_io_t *foxtrot_;
+        const size_t foxtrot_max_data_length_;
 };

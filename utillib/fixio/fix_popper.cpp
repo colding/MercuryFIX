@@ -8,20 +8,20 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *     (1) Redistributions of source code must retain the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer.
- * 
+ *
  *     (2) Redistributions in binary form must reproduce the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     (3) The name of the author may not be used to endorse or
  *     promote products derived from this software without specific
  *     prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -139,6 +139,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <sys/socket.h>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
@@ -170,28 +171,35 @@
  */
 #define MSG_TYPE_MAX_LENGTH (16)
 
-struct pusher_thread_args {
-        int *terminate;
-        int *running;
-        int *error;
-        int sink_fd;
-        alfa_io_t *alfa;
-        bravo_io_t *bravo;
-        charlie_io_t *charlie;
-        const char *FIX_start;
-        int FIX_start_length;
+// takes messages from foxtrot and puts them onto delta and echo as
+// appropriate.
+struct splitter_thread_args_t {
+	delta_io_t *delta;
+	echo_io_t *echo;
+	foxtrot_io_t *foxtrot;
+	char *begin_string;
+	size_t begin_string_length;
+};
+
+// takes incomming data from source_fd_ and puts it onto foxtrot
+struct sucker_thread_args_t {
+	int *terminate_sucker;
+	int *sucker_running;
+	int *error;
+	int source_fd;
+	foxtrot_io_t *foxtrot;
 };
 
 static inline void
 set_flag(int *flag, int val)
 {
-        __atomic_store_n(flag, val, __ATOMIC_SEQ_CST);
+	__atomic_store_n(flag, val, __ATOMIC_RELEASE);
 }
 
 static inline int
 get_flag(int *flag)
 {
-        return __atomic_load_n(flag, __ATOMIC_SEQ_CST);
+	return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
 }
 
 /*
@@ -202,83 +210,26 @@ get_flag(int *flag)
 static inline int
 get_FIX_checksum(char *msg, size_t len)
 {
-        uint64_t sum = 0;
-        size_t n;
+	uint64_t sum = 0;
+	size_t n;
 
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
+	for (n = 0; n < len; ++n) {
+		sum += (uint64_t)msg[n];
+	}
 
-        return (sum % 256);
+	return (sum % 256);
 }
 
 
 /*
- * OK, this is butt ugly, but I need a fast solution. The maximum
- * value of a uin64_t (18446744073709551615) has 20 digits. 0 (zero)
- * is returned for larger numbers.
- */
-static inline int
-get_digit_count(const uint64_t num)
-{
-        if (10 > num)
-                return 1;
-        if (100 > num)
-                return 2;
-        if (1000 > num)
-                return 3;
-        if (10000 > num)
-                return 4;
-        if (100000 > num)
-                return 5;
-        if (1000000 > num)
-                return 6;
-        if (10000000 > num)
-                return 7;
-        if (100000000 > num)
-                return 8;
-        if (1000000000 > num)
-                return 9;
-        if (10000000000 > num)
-                return 10;
-        if (100000000000 > num)
-                return 11;
-        if (1000000000000 > num)
-                return 12;
-        if (10000000000000 > num)
-                return 13;
-        if (100000000000000 > num)
-                return 14;
-        if (1000000000000000 > num)
-                return 15;
-        if (10000000000000000 > num)
-                return 16;
-        if (100000000000000000 > num)
-                return 17;
-        if (1000000000000000000 > num)
-                return 18;
-        if (10000000000000000000ULL > num)
-                return 19;
-        if (UINT64_MAX >= num)
-                return 20;
-
-        return 0;
-}
-
-/*
- * Content of alfa, bravo and charlie disruptor entries:
+ * Content of delta, echo and foxtrotr disruptor entries:
  *
- * - sizeof(uint32_t) bytes holding the length of partial FIX message
- * - Then FIX_BUFFER_RESERVED_HEAD bytes which holds the message type
- *   in the begining and which will later serve as working area when
- *   the complete FIX message is put together.
+ * - foxtrot holds data as it arrives on the socket.
  *
- * - The partial FIX message begins at: entry + sizeof(uint32_t)
- *   + FIX_BUFFER_RESERVED_HEAD
+ * - delta holds a complete non-session message per entry
  *
- * - There is always at least FIX_BUFFER_RESERVED_TAIL bytes left in the end to hold the
- *   checksum and terminating <SOH>.
- */
+ * - echo holds a complete session message per entry
+  */
 
 /*
  * Delta) One publisher, many entry processors,
@@ -288,8 +239,8 @@ get_digit_count(const uint64_t num)
 #define DELTA_QUEUE_LENGTH (128) // MUST be a power of two
 #define DELTA_ENTRY_PROCESSORS (32)
 struct delta_t {
-        size_t size;
-        void *data;
+	size_t size;
+	void *data;
 };
 
 DEFINE_ENTRY_TYPE(struct delta_t, delta_entry_t);
@@ -386,141 +337,392 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_)
  * session is new.
  */
 static uint64_t
-get_msg_seq_number(void)
+get_latest_msg_seq_number_recieved(void)
 {
-        return 0;
+	return 0;
+}
+
+static inline char*
+get_message_type(struct delta_entry_t * const entry)
+{
+	char *tmp;;
+	char *msg_type = (char*)memmem(entry->content.data, entry->content.size, "\1""35=", 4);
+
+	tmp = msg_type;
+	while (SOH != *tmp) {
+		++tmp;
+	}
+	*tmp = '\0';
+
+	return msg_type;
+}
+
+static inline bool
+is_session_message(const char * const /*msg_type*/)
+{
+	return false;
+}
+
+enum FIX_Parse_State
+{
+	FindingBeginString,
+	FindingBodyLength,
+	CopyingBody,
+};
+
+void*
+splitter_thread_func(void *arg)
+{
+	enum FIX_Parse_State state;
+	int l;
+	uint32_t k;
+	uint32_t entry_length;
+	uint32_t body_length;
+	uint32_t bytes_left_to_copy;
+	char length_str[32];
+	size_t bs_pos;
+	char *msg_type;
+	uint64_t msg_seq_number;
+	struct cursor_t n;
+
+	// split onto these
+	struct cursor_t delta_cursor;
+	struct delta_entry_t *delta_entry;
+	struct cursor_t echo_cursor;
+	struct echo_entry_t *echo_entry;
+
+	// from this source
+	struct cursor_t foxtrot_cursor;
+	struct count_t foxtrot_reg_number;
+	const struct foxtrot_entry_t *foxtrot_entry;
+	struct cursor_t cursor_upper_limit;
+
+	struct splitter_thread_args_t *args = (struct splitter_thread_args_t*)arg;
+	if (!args) {
+		M_ERROR("splitter thread cannot run");
+		abort();
+	}
+
+	// Get last message sequence number recieved - tag 34.  The
+	// sequence number will be incremented whenever a message is
+	// recieved and varified (by checksum and FIX version)
+	msg_seq_number = get_latest_msg_seq_number_recieved();
+
+	//
+	// register entry processor for foxtrot
+	//
+	foxtrot_cursor.sequence = foxtrot_entry_processor_barrier_register(args->foxtrot, &foxtrot_reg_number);
+
+	// acquire publisher entries
+	delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+	delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+	echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+	echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+
+	// filter available data to echo and delta forever and ever
+	l = 0;
+	bs_pos = 0;
+	bytes_left_to_copy = 0;
+	state = FindingBeginString;
+	do {
+		cursor_upper_limit.sequence = foxtrot_cursor.sequence;
+		if (!foxtrot_entry_processor_barrier_wait_for_nonblocking(args->foxtrot, &cursor_upper_limit))
+			continue;
+
+		for (n.sequence = foxtrot_cursor.sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
+			foxtrot_entry = foxtrot_ring_buffer_show_entry(args->foxtrot, &n);
+			
+			entry_length = getul(foxtrot_entry->content);
+			for (k = 0; k < entry_length; ++k) {
+				switch (state) {
+				case FindingBeginString:
+					if (args->begin_string[bs_pos] == *(foxtrot_entry->content + sizeof(uint32_t) + k)) {
+						++bs_pos;
+						continue;
+					}
+					if ('\0' != args->begin_string[bs_pos])
+						state = FindingBodyLength;
+					bs_pos = 0;
+					break;
+				case FindingBodyLength:
+					length_str[l] = *(char*)(foxtrot_entry->content + sizeof(uint32_t) + k);
+					++l; // for 64bit systems this is safe as the largest number of digits is 20
+					if (SOH == length_str[l]) {
+						length_str[l] = '\0';						
+						body_length = atoll(length_str);
+						bytes_left_to_copy = body_length + 1 + 7; // we need to copy the SOH following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending SOH
+
+						if (delta_entry->content.size < strlen(args->begin_string) + strlen(length_str) + body_length + 1 + 7) {
+							free(delta_entry->content.data);
+							delta_entry->content.size = strlen(args->begin_string) + strlen(length_str) + body_length + 1 + 7;
+							delta_entry->content.data = malloc(delta_entry->content.size);
+							if (!delta_entry->content.data) {
+								M_ALERT("no memory");
+								state = FindingBeginString; // skip this message and hope for better memory conditions later
+								l = 0;
+								break;
+							}
+						}
+
+						memcpy(delta_entry->content.data, args->begin_string, strlen(args->begin_string)); // 8=FIX.X.Y<SOH>9=
+						memcpy((char*)delta_entry->content.data + strlen(args->begin_string), length_str, strlen(length_str)); // <LENGTH>
+						state = CopyingBody;
+						l = 0;
+					}
+					break;
+				case CopyingBody:
+					if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
+						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), foxtrot_entry->content + sizeof(uint32_t) + k, bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
+						msg_type = get_message_type(delta_entry);
+						if (is_session_message(msg_type)) {
+							if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
+								M_ALERT("o versized session message");
+							} else {
+								while (*msg_type) {
+									++msg_type;
+								}
+								*msg_type = SOH;
+								
+								setul(echo_entry->content, delta_entry->content.size);
+								memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
+								echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
+								echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+								echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+							}
+						} else {
+							while (*msg_type) {
+								++msg_type;
+							}
+							*msg_type = SOH;
+							delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
+							delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+							delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+						}
+						++msg_seq_number;
+						state = FindingBeginString;
+						k = entry_length;
+					} else {
+						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), foxtrot_entry->content + sizeof(uint32_t) + k, entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
+						bytes_left_to_copy -= entry_length - k;
+						k = entry_length;
+					}
+					break;
+				default:
+					abort();
+				}
+
+ 			}
+			/* Should we release each entry as we are done
+			 * with it or the entire batch in one go...?
+			 * 
+			 * OK, we need to release each entry as we are
+			 * done with it for _very_ long messages which
+			 * takes up more than the buffering capacity
+			 * of the disruptor. We might detect this
+			 * conditions as an optimization, but that is
+			 * for later.
+			 *
+			 * Also, we need to release as we go if the
+			 * input is happening faster than we are able
+			 * to process it. Maybe the approach below
+			 * really is the safest...
+			 */
+			foxtrot_entry_processor_barrier_release_entry(args->foxtrot, &foxtrot_reg_number, &n);
+		}
+	} while (1);
+
+	foxtrot_entry_processor_barrier_unregister(args->foxtrot, &foxtrot_reg_number);
+
+	return NULL;
 }
 
 void*
-popper_thread_func(void *arg)
+sucker_thread_func(void *arg)
 {
-        int rval;
-        uint64_t msg_seq_number;
+	void *buf;
+	ssize_t rval;
+	struct cursor_t foxtrot_cursor;
+	struct foxtrot_entry_t *foxtrot_entry = NULL;
 
-        struct cursor_t alfa_cursor;
-        struct count_t alfa_reg_number;
+	struct sucker_thread_args_t *args = (struct sucker_thread_args_t*)arg;
+	if (!args) {
+		M_ERROR("pusher thread cannot run");
+		abort();
+	}
 
-        struct cursor_t bravo_cursor;
-        struct count_t bravo_reg_number;
-
-        struct cursor_t charlie_cursor;
-        struct count_t charlie_reg_number;
-
-        struct pusher_thread_args *args = (struct pusher_thread_args*)arg;
-        if (!args) {
-                M_ERROR("pusher thread cannot run");
-		set_flag(args->error, ENOMEM);
-                return NULL;
-        }
-
-        struct iovec *vdata = (struct iovec*)malloc(sizeof(struct iovec)*IOV_MAX);
-        if (!vdata) {
-                free(args);
-                M_ALERT("no memory");
-		set_flag(args->error, ENOMEM);
-                return NULL;
-        }
-
-        // Get last message sequence number sent - tag 34.  The
-	// sequence numvber will be incremented whenever a message is
-	// sent.
-        msg_seq_number = get_msg_seq_number();
-
-        //
-        // register entry processors
-        //
-        alfa_cursor.sequence = alfa_entry_processor_barrier_register(args->alfa, &alfa_reg_number);
-        bravo_cursor.sequence = bravo_entry_processor_barrier_register(args->bravo, &bravo_reg_number);
-        charlie_cursor.sequence = charlie_entry_processor_barrier_register(args->charlie, &charlie_reg_number);
-
-        // push data into sink until told to stop
-        while (!get_flag(args->terminate)) {
-                // alfa
-                rval = push_alfa(&alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
-                        set_flag(args->error, rval);
-                        goto out;
-                }
-
-                // bravo
-                rval = push_bravo(&bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
-                        set_flag(args->error, rval);
-                        goto out;
-                }
-
-                // charlie
-                rval = push_charlie(&charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
-                        set_flag(args->error, rval);
-                        goto out;
-                }
-        }
+	// pull data from source_fd onto foxtrot until told to stop
+	while (!get_flag(args->terminate_sucker)) {
+		foxtrot_publisher_port_next_entry_blocking(args->foxtrot, &foxtrot_cursor);
+		foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
+		buf = foxtrot_entry->content + sizeof(uint32_t);
+	again:
+		rval = recvfrom(args->source_fd, buf, FOXTROT_MAX_DATA_SIZE, 0, NULL, NULL);
+		switch (rval) {
+		case 0:
+			M_ERROR("peer closed connection");
+			goto out;
+		case -1:
+			switch (errno) {
+			case ETIMEDOUT:
+			case EAGAIN:
+			case EINTR:
+				if (get_flag(args->terminate_sucker))
+					goto out;
+				goto again;
+			default:
+				set_flag(args->error, errno);
+				M_ERROR("error writing data: %s", strerror(errno));
+				goto out;
+			}
+		default:
+			setul(foxtrot_entry->content, rval);
+			break;
+		}
+		foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+	}
 out:
-        free(vdata);
-        free(args);
-        alfa_entry_processor_barrier_unregister(args->alfa, &alfa_reg_number);
-        bravo_entry_processor_barrier_unregister(args->bravo, &bravo_reg_number);
-        charlie_entry_processor_barrier_unregister(args->charlie, &charlie_reg_number);
+	setul(foxtrot_entry->content, 0);
+	foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+	set_flag(args->sucker_running, 0);
 
-        set_flag(args->running, 0);
-
-        return NULL;
+	return NULL;
 }
 
-FIX_Popper::FIX_Popper(const int source_fd)
-        : echo_max_data_length_(ECHO_MAX_DATA_SIZE),
-          foxtrot_max_data_length_(FOXTROT_MAX_DATA_SIZE)
+
+FIX_Popper::FIX_Popper(int source_fd)
+	: echo_max_data_length_(ECHO_MAX_DATA_SIZE),
+	  foxtrot_max_data_length_(FOXTROT_MAX_DATA_SIZE)
 {
-        source_fd_ = source_fd;
-}
-
-FIX_Popper::~FIX_Popper()
-{
-	int n;
-
-	free(echo_);
-	free(foxtrot_);
-	for (n = 0; n < DELTA_QUEUE_LENGTH; ++n) 
-		free(delta_->buffer[n].content.data);
-	free(delta_);
-
-	if (-1 != source_fd_)
-		close(source_fd_);
+	source_fd_ = source_fd;
+	memset(begin_string_, '\0', sizeof(begin_string_));
+	error_ = 0;
+	delta_ = NULL;
+	echo_ = NULL;
+	foxtrot_ = NULL;
+	splitter_args_ = NULL;
+	sucker_args_ = NULL;
+	set_flag(&running_, 0);
+	set_flag(&terminate_, 1);
 }
 
 bool
-FIX_Popper::init(void)
+FIX_Popper::init(const char * const FIX_ver, int source_fd)
 {
-        delta_ = delta_ring_buffer_malloc();
-        if (!delta_)
-                return false;
+	stop();
 
-        echo_ = echo_ring_buffer_malloc();
-        if (!echo_)
-                return false;
+	if (sizeof(begin_string_) - 1 > strlen(FIX_ver))
+		goto err;
+	if (!begin_string_[0] && !FIX_ver) {
+		M_ALERT("no FIX version specified");
+		goto err;
+	}
+	snprintf(begin_string_, sizeof(begin_string_), "8=%s%c9=", FIX_ver, SOH);
 
-        foxtrot_ = foxtrot_ring_buffer_malloc();
-        if (!foxtrot_)
-                return false;
+	if (-1 != source_fd) {
+		if (source_fd_)
+			close(source_fd_);
+		source_fd_ = source_fd;
+	}
 
-        delta_ring_buffer_init(delta_);
-        echo_ring_buffer_init(echo_);
-        foxtrot_ring_buffer_init(foxtrot_);
+	if (!delta_) {
+		delta_ = delta_ring_buffer_malloc();
+		if (!delta_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		delta_ring_buffer_init(delta_);
+	}
 
-        return true;
+	if (!echo_) {
+		echo_ = echo_ring_buffer_malloc();
+		if (!echo_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		echo_ring_buffer_init(echo_);
+	}
+
+	if (!foxtrot_) {
+		foxtrot_ = foxtrot_ring_buffer_malloc();
+		if (!foxtrot_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		foxtrot_ring_buffer_init(foxtrot_);
+	}
+
+	// NOTE: We can't change the FIX version on the fly with this
+	// design. Maybe we should abolish the filter thread and let
+	// the sucker thread do the filtering? Anyways, that is for
+	// later...
+	if (!splitter_args_) {
+		splitter_args_ = (splitter_thread_args_t*)malloc(sizeof(struct splitter_thread_args_t));
+		if (!splitter_args_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		splitter_args_->begin_string = begin_string_;
+		splitter_args_->begin_string_length = strlen(begin_string_);
+		splitter_args_->delta = delta_;
+		splitter_args_->echo = echo_;
+		splitter_args_->foxtrot = foxtrot_;
+
+		pthread_t splitter_thread_id;
+		if (!create_detached_thread(&splitter_thread_id, splitter_args_, splitter_thread_func)) {
+			M_ALERT("could not create filter thread");
+			abort();
+		}
+	}
+
+	free(sucker_args_);
+	sucker_args_ = (sucker_thread_args_t*)malloc(sizeof(struct sucker_thread_args_t));
+	if (!sucker_args_) {
+		M_ALERT("no memory");
+		goto err;
+	}
+	sucker_args_->terminate_sucker = &terminate_;
+	sucker_args_->sucker_running = &running_;
+	sucker_args_->source_fd = source_fd_;
+	sucker_args_->error = &error_;
+	sucker_args_->foxtrot = foxtrot_;
+
+	return true;
+err:
+	return false;
 }
 
 int
-FIX_Popper::pop(const size_t /*len*/,
-                void * const /*data*/)
+FIX_Popper::pop(size_t * const /*len*/,
+		void ** /*data*/)
 {
 	return 0;
 }
 
 int
 FIX_Popper::session_pop(const size_t /*len*/,
-                        void * const /*data*/)
+			void * /*data*/)
 {
 	return 0;
+}
+
+void
+FIX_Popper::stop(void)
+{
+	set_flag(&terminate_, 1);
+	if (get_flag(&running_))
+		pthread_join(sucker_thread_id_, NULL);
+}
+
+void
+FIX_Popper::start(void)
+{
+	set_flag(&terminate_, 0);
+	if (get_flag(&running_))
+		return;
+
+	if (!create_joinable_thread(&sucker_thread_id_, sucker_args_, sucker_thread_func)) {
+		M_ALERT("could not create sucker thread");
+		abort();
+	}
+	set_flag(&running_, 1);
 }
