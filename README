@@ -4,6 +4,20 @@ MercuryFIX
 MercuryFIX is a FIX server in the making. Not at all usable or even
 halfway finished yet, but you're welcome to take a look. 
 
+
+GOALS
+=====
+
+A FIX server which:
+
+* maintains an uninterrupted session even during software updates
+
+* has focus on performance and robustness
+
+* is reconfigurable while running - mid-session even where it makes
+  sense
+
+
 Doing
 =====
 
@@ -16,9 +30,11 @@ TODO
 ==== 
 
 * Cook up some code to let SQLite store and retrieve sent messages and
-  the latest recieved sequence number.
+  the latest recieved/sent sequence number.
 
 * Do something about the configuration classes. They are way too
   complex.
 
 * Move to DB based configuration while I'm at it.
+
+* Make a reasonable sesison implementation
