@@ -610,8 +610,10 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
 {
 	stop();
 
-	if (sizeof(begin_string_) - 1 > strlen(FIX_ver))
+	if (sizeof(begin_string_) <= strlen(FIX_ver)) {
+                M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(begin_string_));
 		goto err;
+	}
 	if (!begin_string_[0] && !FIX_ver) {
 		M_ALERT("no FIX version specified");
 		goto err;

@@ -750,8 +750,10 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
 {
 	stop();
 
-	if (sizeof(FIX_start_bytes_) - 1 > strlen(FIX_ver))
+	if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
+                M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
 		goto err;
+	}
         if (!FIX_start_bytes_[0] && !FIX_ver) {
                 M_ALERT("no FIX version specified");
                 goto err;
