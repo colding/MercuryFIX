@@ -112,7 +112,7 @@ public:
          */
         int push(const size_t len, 
 		 const void * const data, 
-		 char * const msg_type);
+		 const char * const msg_type);
 
         /*
          * Please see FIX_Pusher::push() for the data format.
@@ -121,7 +121,7 @@ public:
          */
         int session_push(const size_t len, 
 			 const void * const data,
-			 char * const msg_type);
+			 const char * const msg_type);
 
 	/*
 	 * Flushes stale content.

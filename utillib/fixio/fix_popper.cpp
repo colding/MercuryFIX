@@ -191,7 +191,7 @@ get_flag(int *flag)
  * included in the checksum calculation.
  */
 static inline int
-get_FIX_checksum(char *msg, size_t len)
+get_FIX_checksum(const char *msg, size_t len)
 {
 	uint64_t sum = 0;
 	size_t n;

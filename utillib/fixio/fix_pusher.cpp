@@ -204,7 +204,7 @@ get_flag(int *flag)
  * included in the checksum calculation.
  */
 static inline unsigned int
-get_FIX_checksum(char *msg, size_t len)
+get_FIX_checksum(const char *msg, size_t len)
 {
         uint64_t sum = 0;
         size_t n;
@@ -813,7 +813,7 @@ err:
 int
 FIX_Pusher::push(const size_t len,
                  const void * const data,
-                 char * const msg_type)
+                 const char * const msg_type)
 {
         struct cursor_t alfa_cursor;
         struct alfa_entry_t *alfa_entry;
@@ -862,7 +862,7 @@ FIX_Pusher::push(const size_t len,
 int
 FIX_Pusher::session_push(const size_t len,
                          const void * const data,
-                         char * const msg_type)
+                         const char * const msg_type)
 {
         struct cursor_t charlie_cursor;
         struct charlie_entry_t *charlie_entry;

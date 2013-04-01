@@ -35,6 +35,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <sys/socket.h>
 #include <stdio.h>
 #include <check.h>
 #include <fcntl.h>
@@ -47,7 +48,7 @@
 #include "stdlib/log/log.h"
 
 /*
- * Valid FIX sample messages:
+ * Valid FIX sample messages with the real SOH:
  *
  * 8=FIX.4.19=6135=A34=149=EXEC52=20121105-23:24:0656=BANZAI98=0108=3010=003
  * 8=FIX.4.19=6135=A34=149=BANZAI52=20121105-23:24:0656=EXEC98=0108=3010=003
@@ -73,7 +74,7 @@
 /*
  * Valid partial messages for push class
  */
-const char *messages[16] = {
+const char *partial_messages[16] = {
 	"|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=",
 	"|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
 	"|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
@@ -92,6 +93,27 @@ const char *messages[16] = {
 	"|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=",
 };
 
+/*
+ * Valid complete messages
+ */
+const char *complete_messages[16] = {
+	"8=FIX.4.1|9=61|35=A|34=1|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=086|",
+	"8=FIX.4.1|9=61|35=A|34=1|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=086|",
+	"8=FIX.4.1|9=49|35=0|34=2|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=065|",
+	"8=FIX.4.1|9=49|35=0|34=2|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=065|",
+	"8=FIX.4.1|9=103|35=D|34=3|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=248|",
+	"8=FIX.4.1|9=139|35=8|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=082|",
+	"8=FIX.4.1|9=153|35=8|34=4|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=253|",
+	"8=FIX.4.1|9=103|35=D|34=4|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=233|",
+	"8=FIX.4.1|9=139|35=8|34=5|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=072|",
+	"8=FIX.4.1|9=153|35=8|34=6|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=243|",
+	"8=FIX.4.1|9=108|35=D|34=5|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=056|",
+	"8=FIX.4.1|9=138|35=8|34=7|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=019|",
+	"8=FIX.4.1|9=104|35=F|34=6|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=138|",
+	"8=FIX.4.1|9=82|35=3|34=8|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=083|",
+	"8=FIX.4.1|9=104|35=F|34=7|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=137|",
+	"8=FIX.4.1|9=82|35=3|34=9|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=085|",
+};
 
 /*
  * Valid message types
@@ -116,6 +138,23 @@ const char *message_types[16] = {
 };
 
 /*
+ * msg is a pointer to the first character in a zero terminated FIX
+ * messsage
+ */
+static inline unsigned int
+get_FIX_checksum(const char *msg, size_t len)
+{
+        uint64_t sum = 0;
+        size_t n;
+
+        for (n = 0; n < len; ++n) {
+                sum += (uint64_t)msg[n];
+        }
+
+        return (sum % 256);
+}
+
+/*
  * Test initalization of FIX_Pusher class
  */
 START_TEST(test_FIX_Pusher_create)
@@ -138,6 +177,31 @@ START_TEST(test_FIX_Popper_create)
 
 	fail_unless(NULL != popper, NULL);
 	fail_unless(true == popper->init("FIX.4.2", source_fd), NULL);
+}
+END_TEST
+
+/*
+ * Test initalization of FIX_Pusher class
+ */
+START_TEST(test_FIX_send_and_recv)
+{
+	int n;
+	size_t len;
+	void *msg;
+	FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+	FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+	int sockets[2] = { -1, -1 };
+
+	fail_unless(0 == socketpair(AF_INET, SOCK_STREAM, 0, sockets), NULL);
+	fail_unless(true == pusher->init("FIX.4.2", sockets[0]), NULL);
+	fail_unless(true == popper->init("FIX.4.2", sockets[1]), NULL);
+
+	for (n = 0; n < 16; ++n) {
+		pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]);
+		popper->pop(&len, &msg);
+		fail_unless(len == strlen(complete_messages[n]), NULL);
+		fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+	}	
 }
 END_TEST
 
