@@ -72,9 +72,9 @@ class FIX_Pusher
 {
 public:
 	/* 
-	 * Call this with a valid file descriptor or -1
+	 * Call this with SOH or whatever you want as delimiter for testing
 	 */
-        FIX_Pusher(int sink_fd);
+        FIX_Pusher(const char soh);
 
         /*
          * Allocates and initializes private members. It may be called
@@ -154,7 +154,8 @@ private:
          */
         FIX_Pusher(void)
                 : alfa_max_data_length_(0),
-                  charlie_max_data_length_(0)
+                  charlie_max_data_length_(0),
+		  soh_('B')
                 {
                 };
 
@@ -163,7 +164,8 @@ private:
          */
         FIX_Pusher(const FIX_Pusher&)
                 : alfa_max_data_length_(0),
-                  charlie_max_data_length_(0)
+                  charlie_max_data_length_(0),
+		  soh_('S')
                 {
                 };
 
@@ -200,6 +202,8 @@ private:
 
         charlie_io_t *charlie_;
         const size_t charlie_max_data_length_;
+
+	const char soh_; // used to overwrite SOH ('\1') for testing
 };
 
 
@@ -207,9 +211,9 @@ class FIX_Popper
 {
 public:
 	/* 
-	 * Call this with a valid file descriptor or -1
+	 * Call this with SOH or whatever you want as delimiter for testing
 	 */
-        FIX_Popper(int source_fd);
+        FIX_Popper(const char soh);
 
         /*
          * Allocates and initializes private members. It may be called
@@ -279,7 +283,8 @@ private:
          */
         FIX_Popper(void)
                 : echo_max_data_length_(0),
-                  foxtrot_max_data_length_(0)
+                  foxtrot_max_data_length_(0),
+		  soh_('B')
                 {
                 };
 
@@ -288,7 +293,8 @@ private:
          */
         FIX_Popper(const FIX_Popper&)
                 : echo_max_data_length_(0),
-                  foxtrot_max_data_length_(0)
+                  foxtrot_max_data_length_(0),
+		  soh_('S')
                 {
                 };
 
@@ -323,4 +329,6 @@ private:
 
         foxtrot_io_t *foxtrot_;
         const size_t foxtrot_max_data_length_;
+
+	const char soh_; // used to overwrite SOH ('\1') for testing
 };

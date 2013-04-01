@@ -153,24 +153,6 @@
 #include "applib/fixlib/defines.h"
 #include "utillib/fixio/fixio.h"
 
-/*
- * Reserved initial space for the tags 8, 9, 35 and 34 in the FIX standard
- * header in push buffers.
- */
-#define FIX_BUFFER_RESERVED_HEAD (128)
-
-/*
- * Reserved terminal space for the checksum and terminating SOH
- * character.
- */
-#define FIX_BUFFER_RESERVED_TAIL (4)
-
-/*
- * The maximum length in bytes for the message type string, tag
- * 35. The terminating null character is not included in the count.
- */
-#define MSG_TYPE_MAX_LENGTH (16)
-
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.
 struct splitter_thread_args_t {
@@ -179,6 +161,7 @@ struct splitter_thread_args_t {
 	foxtrot_io_t *foxtrot;
 	char *begin_string;
 	size_t begin_string_length;
+	char soh;
 };
 
 // takes incomming data from source_fd_ and puts it onto foxtrot
@@ -203,7 +186,7 @@ get_flag(int *flag)
 }
 
 /*
- * msg is a pointer to the first character in a FIX messsage which is
+ * msg is a pointer to the first byte in a FIX messsage which is
  * included in the checksum calculation. len is the number of bytes
  * included in the checksum calculation.
  */
@@ -312,27 +295,6 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_)
  *********************/
 
 /*
- * FIX sample messages:
- *
- * 8=FIX.4.19=6135=A34=149=EXEC52=20121105-23:24:0656=BANZAI98=0108=3010=003
- * 8=FIX.4.19=6135=A34=149=BANZAI52=20121105-23:24:0656=EXEC98=0108=3010=003
- * 8=FIX.4.19=4935=034=249=BANZAI52=20121105-23:24:3756=EXEC10=228
- * 8=FIX.4.19=4935=034=249=EXEC52=20121105-23:24:3756=BANZAI10=228
- * 8=FIX.4.19=10335=D34=349=BANZAI52=20121105-23:24:4256=EXEC11=135215788257721=138=1000040=154=155=MSFT59=010=062
- * 8=FIX.4.19=13935=834=349=EXEC52=20121105-23:24:4256=BANZAI6=011=135215788257714=017=120=031=032=037=138=1000039=054=155=MSFT150=2151=010=059
- * 8=FIX.4.19=15335=834=449=EXEC52=20121105-23:24:4256=BANZAI6=12.311=135215788257714=1000017=220=031=12.332=1000037=238=1000039=254=155=MSFT150=2151=010=230
- * 8=FIX.4.19=10335=D34=449=BANZAI52=20121105-23:24:5556=EXEC11=135215789503221=138=1000040=154=155=ORCL59=010=047
- * 8=FIX.4.19=13935=834=549=EXEC52=20121105-23:24:5556=BANZAI6=011=135215789503214=017=320=031=032=037=338=1000039=054=155=ORCL150=2151=010=049
- * 8=FIX.4.19=15335=834=649=EXEC52=20121105-23:24:5556=BANZAI6=12.311=135215789503214=1000017=420=031=12.332=1000037=438=1000039=254=155=ORCL150=2151=010=220
- * 8=FIX.4.19=10835=D34=549=BANZAI52=20121105-23:25:1256=EXEC11=135215791235721=138=1000040=244=1054=155=SPY59=010=003
- * 8=FIX.4.19=13835=834=749=EXEC52=20121105-23:25:1256=BANZAI6=011=135215791235714=017=520=031=032=037=538=1000039=054=155=SPY150=2151=010=252
- * 8=FIX.4.19=10435=F34=649=BANZAI52=20121105-23:25:1656=EXEC11=135215791643738=1000041=135215791235754=155=SPY10=198
- * 8=FIX.4.19=8235=334=849=EXEC52=20121105-23:25:1656=BANZAI45=658=Unsupported message type10=000
- * 8=FIX.4.19=10435=F34=749=BANZAI52=20121105-23:25:2556=EXEC11=135215792530938=1000041=135215791235754=155=SPY10=197
- * 8=FIX.4.19=8235=334=949=EXEC52=20121105-23:25:2556=BANZAI45=758=Unsupported message type10=002
- */
-
-/*
  * Returns the sequence number of last recieved message or 0 if the
  * session is new.
  */
@@ -342,14 +304,21 @@ get_latest_msg_seq_number_recieved(void)
 	return 0;
 }
 
+/*
+ * Returns pointer to first character in message type. The field
+ * terminating SOH will be changed to '\0'. Must be changed manually
+ * back if FIX protocol compliance is to be maintained.
+ */
 static inline char*
-get_message_type(struct delta_entry_t * const entry)
+get_message_type(const char soh, 
+		 struct delta_entry_t * const entry)
 {
-	char *tmp;;
-	char *msg_type = (char*)memmem(entry->content.data, entry->content.size, "\1""35=", 4);
+	static const char msg_type_field[4] = { soh, '3', '5', '=' };
+	char *msg_type = (char*)memmem(entry->content.data, entry->content.size, msg_type_field, sizeof(msg_type_field));
+	char *tmp;
 
 	tmp = msg_type;
-	while (SOH != *tmp) {
+	while (msg_type_field[0] != *tmp) {
 		++tmp;
 	}
 	*tmp = '\0';
@@ -447,10 +416,10 @@ splitter_thread_func(void *arg)
 				case FindingBodyLength:
 					length_str[l] = *(char*)(foxtrot_entry->content + sizeof(uint32_t) + k);
 					++l; // for 64bit systems this is safe as the largest number of digits is 20
-					if (SOH == length_str[l]) {
+					if (args->soh == length_str[l]) {
 						length_str[l] = '\0';						
 						body_length = atoll(length_str);
-						bytes_left_to_copy = body_length + 1 + 7; // we need to copy the SOH following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending SOH
+						bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
 
 						if (delta_entry->content.size < strlen(args->begin_string) + strlen(length_str) + body_length + 1 + 7) {
 							free(delta_entry->content.data);
@@ -472,8 +441,10 @@ splitter_thread_func(void *arg)
 					break;
 				case CopyingBody:
 					if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
-						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), foxtrot_entry->content + sizeof(uint32_t) + k, bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
-						msg_type = get_message_type(delta_entry);
+						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
+						       foxtrot_entry->content + sizeof(uint32_t) + k, 
+						       bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
+						msg_type = get_message_type(args->soh, delta_entry);
 						if (is_session_message(msg_type)) {
 							if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
 								M_ALERT("o versized session message");
@@ -481,7 +452,7 @@ splitter_thread_func(void *arg)
 								while (*msg_type) {
 									++msg_type;
 								}
-								*msg_type = SOH;
+								*msg_type = args->soh;
 								
 								setul(echo_entry->content, delta_entry->content.size);
 								memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
@@ -493,7 +464,7 @@ splitter_thread_func(void *arg)
 							while (*msg_type) {
 								++msg_type;
 							}
-							*msg_type = SOH;
+							*msg_type = args->soh;
 							delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
 							delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
 							delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
@@ -502,7 +473,9 @@ splitter_thread_func(void *arg)
 						state = FindingBeginString;
 						k = entry_length;
 					} else {
-						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), foxtrot_entry->content + sizeof(uint32_t) + k, entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
+						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
+						       foxtrot_entry->content + sizeof(uint32_t) + k,
+						       entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
 						bytes_left_to_copy -= entry_length - k;
 						k = entry_length;
 					}
@@ -589,11 +562,12 @@ out:
 }
 
 
-FIX_Popper::FIX_Popper(int source_fd)
+FIX_Popper::FIX_Popper(const char soh)
 	: echo_max_data_length_(ECHO_MAX_DATA_SIZE),
-	  foxtrot_max_data_length_(FOXTROT_MAX_DATA_SIZE)
+	  foxtrot_max_data_length_(FOXTROT_MAX_DATA_SIZE),
+	  soh_(soh)
 {
-	source_fd_ = source_fd;
+	source_fd_ = -1;
 	memset(begin_string_, '\0', sizeof(begin_string_));
 	error_ = 0;
 	delta_ = NULL;
@@ -618,13 +592,17 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
 		M_ALERT("no FIX version specified");
 		goto err;
 	}
-	snprintf(begin_string_, sizeof(begin_string_), "8=%s%c9=", FIX_ver, SOH);
+	snprintf(begin_string_, sizeof(begin_string_), "8=%s%c9=", FIX_ver, soh_);
 
 	if (-1 != source_fd) {
 		if (source_fd_)
 			close(source_fd_);
 		source_fd_ = source_fd;
 	}
+	if (-1 == source_fd_) {
+		M_ALERT("no source file descriptor specified");
+		goto err;
+	}		
 
 	if (!delta_) {
 		delta_ = delta_ring_buffer_malloc();
@@ -668,6 +646,7 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
 		splitter_args_->delta = delta_;
 		splitter_args_->echo = echo_;
 		splitter_args_->foxtrot = foxtrot_;
+		splitter_args_->soh = soh_;
 
 		pthread_t splitter_thread_id;
 		if (!create_detached_thread(&splitter_thread_id, splitter_args_, splitter_thread_func)) {

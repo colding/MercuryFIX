@@ -9,7 +9,6 @@
 *.ready
 *.trs
 test_*
-check_*
 TAGS
 Makefile
 ac_config.h
@@ -38,3 +37,4 @@ scm_state_snapshot
 ar-lib
 versatile
 test-driver
+check_fixio
