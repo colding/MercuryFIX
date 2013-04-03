@@ -109,7 +109,6 @@ Config::init(const char * const source)
 	return true;
 }
 
-
 bool
 Config::subscribe(const char * const identity,
                   const char * const domain,
@@ -163,9 +162,11 @@ Config::subscribe(const char * const identity,
                 M_ERROR("could not create ConfigItem updater thread");
 		goto err;
         }
+	kv = NULL;
 
         return true;
 err:
+	free(kv);
 	free(key);
 	config_file_->release();
 	return false;
