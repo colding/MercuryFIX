@@ -39,36 +39,37 @@
 
 #pragma once
 
-/*******************************************************
- *           Apple and Linux specific code             *
- *******************************************************/
-
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
 #include <pthread.h>
+#include <stdlib.h>
 
+#ifdef __APPLE__
+    #include <libkern/OSAtomic.h>
+#endif
 
-class Guard {
+class MutexGuard {
 public:
-        Guard()
+        MutexGuard()
         {
-                pthread_mutex_init(&mutex_, NULL);
+		if (pthread_mutex_init(&mutex_, NULL))
+			abort();
         };
 
-        ~Guard()
+        ~MutexGuard()
         {
                 pthread_mutex_destroy(&mutex_);
         };
 
-        bool enter(void)
+        int enter(void)
         {
-                return (pthread_mutex_lock(&mutex_) ? false : true);
+                return pthread_mutex_lock(&mutex_);
         };
 
-        bool try_enter(void)
+        int try_enter(void)
         {
-                return (pthread_mutex_trylock(&mutex_) ? false : true);
+                return pthread_mutex_trylock(&mutex_);
         };
 
         void leave(void)
@@ -80,3 +81,71 @@ private:
         pthread_mutex_t mutex_;
 };
 
+#ifdef __linux__
+
+class SpinlockGuard {
+public:
+        SpinlockGuard()
+        {
+		if (pthread_spin_init(&spinlock_, PTHREAD_PROCESS_PRIVATE))
+			abort();
+        };
+
+        ~SpinlockGuard()
+        {
+		pthread_spin_destroy(&spinlock_);
+        };
+
+        int enter(void)
+        {
+		return pthread_spin_lock(&spinlock_);
+        };
+
+        int try_enter(void)
+        {
+		return pthread_spin_trylock(&spinlock_);
+        };
+
+        void leave(void)
+        {
+		pthread_spin_unlock(&spinlock_);
+        };
+
+private:
+	pthread_spinlock_t spin_lock_;
+};
+
+#elif defined __APPLE__
+
+class SpinlockGuard {
+public:
+        SpinlockGuard()
+        {
+		spinlock_ = OS_SPINLOCK_INIT;
+        };
+
+        ~SpinlockGuard()
+        {
+        };
+
+        int enter(void)
+        {
+		OSSpinLockLock(&spinlock_);
+		return 0;
+        };
+
+        int try_enter(void)
+        {
+		return (OSSpinLockTry(&spinlock_) ? 0 : 1);
+        };
+
+        void leave(void)
+        {
+		OSSpinLockUnlock(&spinlock_);
+        };
+
+private:
+	OSSpinLock spinlock_;
+};
+
+#endif
