@@ -187,7 +187,6 @@ END_TEST
 START_TEST(test_FIX_send_and_recv)
 {
         int n;
-	int k;
         size_t len;
         void *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
