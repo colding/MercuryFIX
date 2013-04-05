@@ -45,6 +45,7 @@
     #include "ac_config.h"
 #endif
 #include "stdlib/disruptor/disruptor_types.h"
+#include "stdlib/locks/guard.h"
 #include <stdlib.h>
 #include <pthread.h>
 
@@ -61,8 +62,9 @@ struct splitter_thread_args_t;
 /*
  * Outstanding issue: Do Popper and Pusher instances live forever? If
  * yes, how do I handle socket errors with blocking disruptor
- * functions? Hmm, amswer: The disruptors live forever, but the socket
- * must be re-initialisaible independently from the disruptors.
+ * functions? Hmm, amswer: The disruptors do live forever, but the
+ * source/sink socket must be re-initialisable independently from the
+ * disruptors themselves.
  */
 
 
@@ -245,9 +247,29 @@ public:
 	 *
 	 * len is the total length of the message, not the value of
 	 * tag 9, BodyLength.
+	 * 
+	 * Returns zero if all is well, non-zero if not.
          */
         int pop(size_t * const len, 
 		void **data);
+
+        /*
+         * Same as above, but this method depends on each caller to
+         * maintain a cursor and a registration number.
+	 * 
+	 * Returns zero if all is well, non-zero if not.
+         */
+        int pop(struct cursor_t * const cursor,
+		struct count_t * const reg_number,
+		size_t * const len, 
+		void **data);
+
+        /*
+         * Register state variables for above method. This method will
+         * block until caller may start popping.
+         */
+        void register_popper(struct cursor_t * const cursor,
+			     struct count_t * const reg_number);
 
         /*
          * threadsafe - each pop will return a non-const pointer to a
@@ -324,7 +346,12 @@ private:
 	struct sucker_thread_args_t *sucker_args_;     // parameters for the sucker thread
 	struct splitter_thread_args_t *splitter_args_; // parameters for the splitter thread
 
+	MutexGuard guard_;
         delta_io_t *delta_;
+        struct cursor_t delta_n_;
+        struct cursor_t delta_cursor_upper_limit_;
+	struct count_t delta_reg_number_;
+
 
         echo_io_t *echo_;
         const size_t echo_max_data_length_;

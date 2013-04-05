@@ -128,13 +128,6 @@
  * Bravo) Many publishers, one entry processor, sizeof(size_t)+sizeof(char*) entry size, 512 entries
  *
  * Charlie) One publisher, one entry processor, 512 byte entry size, 512 entries
- *
- * Delta) One publisher, many entry processors, sizeof(size_t)+sizeof(char*) entry size, 512 entries
- *
- * Echo) One publisher, one entry processor, 512 byte entry size, 512 entries
- *
- * Foxtrot) One publisher, one entry processor, 8K entry size, 512 entries
- *
  */
 
 #include <fcntl.h>
@@ -371,7 +364,7 @@ get_latest_msg_seq_number_sent(void)
 
 static int
 do_writev(int fd,
-          size_t bytes_to_write,
+          size_t total_bytes_to_write,
           size_t len,
           struct iovec *iov)
 {
@@ -395,8 +388,8 @@ do_writev(int fd,
                                 return err;
                         }
                 }
-                bytes_to_write -= written;
-                if (!bytes_to_write)
+                total_bytes_to_write -= written;
+                if (!total_bytes_to_write)
                         break;
 
                 sum = 0;
@@ -415,6 +408,10 @@ do_writev(int fd,
 }
 
 /*
+ * This function is ugly, butt ugly, but it has to be as we are trying
+ * to build the complete FIX message in-situ whitout any temporary
+ * strings and with as little copy as possible,
+ *
  * Partial FIX message begins at buffer[FIX_BUFFER_RESERVED_HEAD]. It
  * must not contain the tags:
  *
@@ -444,11 +441,25 @@ do_writev(int fd,
  * characters in the message following the BodyLength field ("9=49|"
  * in the FIX sample message) up to, and including, the delimiter
  * immediately preceeding the CheckSum tag ("10=")
+ *
+ * Parameters:
+ *
+ * msg_seq_number - previous sequence number to be incremented
+ *
+ * buffer         - Contains uint32_t data length counted from (buffer +
+ *                  FIX_BUFFER_RESERVED_HEAD), then msg type, then
+ *                  partial FIX message with enough free space in the
+ *                  end to hold the checksum.
+ *
+ * msg_length     - Output parameter to contain the total length of the
+ *                  complete FIX message
+ *
+ * args           - Thread parameters
  */
 static const char*
 complete_FIX_message(uint64_t * const msg_seq_number,
-                     char * const buffer,
-                     size_t *data_length,
+                     void * const buffer,
+                     size_t *msg_length,
                      const struct pusher_thread_args_t * const args)
 {
         size_t body_length;
@@ -456,34 +467,38 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         int body_length_digits;
         int msg_seq_number_digits;
         unsigned int checksum;
+	char * const buf = (char*)buffer;
 
         ++(*msg_seq_number);
         msg_seq_number_digits = get_digit_count(*msg_seq_number);
 
+	// We must construct the prefix string,
+	// e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
+	// the body length. The body length fills a variable amont of
+	// characters therefore we must know it beforehand.
         body_length =
-                + 3                     /* 35= */
-                + strlen(buffer)        /* msg type */
-                + 1                     /* <SOH> */
-                + 3                     /* 34= */
-                + msg_seq_number_digits /* digits in sequence number */
-                + *data_length          /* length of partial FIX message */
-                - 3;                    /* the 3 bytes comprising "10=" must not be included in the body length */
+                + 3                                /* 35= */
+                + strlen((buf + sizeof(uint32_t))) /* msg type */
+                + 1                                /* <SOH> */
+                + 3                                /* 34= */
+                + msg_seq_number_digits            /* digits in sequence number */
+		+ *msg_length                      /* length of partial FIX message */
+                - 3;                               /* the 3 bytes comprising "10=" in the end of the partial FIX message must not be included in the body length */
         body_length_digits = get_digit_count(body_length);
-        total_prefix_length = args->FIX_start_length + body_length_digits + 1; // "1" is from the SOH that needs to go after the body length number
+        total_prefix_length = args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
 
         // build message
-        sprintf(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length], "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buffer, args->soh, *msg_seq_number);
-        buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD] = args->soh;
+        sprintf((char*)(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length), "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
+	*(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
 
         // add final checksum
-        checksum = get_FIX_checksum(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length], total_prefix_length + *data_length - 3);
-        sprintf(&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *data_length], "%03u", checksum);
-        buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *data_length + FIX_BUFFER_RESERVED_TAIL] = args->soh;
+        checksum = get_FIX_checksum(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
+        sprintf((buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *msg_length), "%03u%c", checksum, args->soh);
 
         // adjust data length to new value
-        *data_length += FIX_BUFFER_RESERVED_TAIL + total_prefix_length;
+        *msg_length += total_prefix_length + 4; // 4 is CHK<SOH>
 
-        return (&buffer[sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length]);
+        return (buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length);
 }
 
 static int
@@ -508,8 +523,8 @@ push_alfa(const bool /* flushing */,
                 for (n.sequence = alfa_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         alfa_entry = alfa_ring_buffer_acquire_entry(args->alfa, &n);
 
-                        vdata[idx].iov_len = getul(alfa_entry->content);
-                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, (char*)alfa_entry->content, &vdata[idx].iov_len, args);
+                        vdata[idx].iov_len = getul(alfa_entry->content); // length of partial message
+                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, alfa_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
                         ++idx;
@@ -547,7 +562,7 @@ push_bravo(const bool /* flushing */,
         size_t total;
         struct cursor_t n;
         struct cursor_t cursor_upper_limit;
-        const struct bravo_entry_t *bravo_entry;
+        struct bravo_entry_t *bravo_entry;
 
         cursor_upper_limit.sequence = bravo_cursor->sequence;
         if (bravo_entry_processor_barrier_wait_for_nonblocking(args->bravo, &cursor_upper_limit)) {
@@ -557,7 +572,7 @@ push_bravo(const bool /* flushing */,
                         bravo_entry = bravo_ring_buffer_acquire_entry(args->bravo, &n);
 
                         vdata[idx].iov_len = bravo_entry->content.size;
-                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, (char*)bravo_entry->content.data, &vdata[idx].iov_len, args);
+                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, bravo_entry->content.data, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
                         ++idx;
@@ -595,17 +610,17 @@ push_charlie(const bool /* flushing */,
         size_t total;
         struct cursor_t n;
         struct cursor_t cursor_upper_limit;
-        const struct charlie_entry_t *charlie_entry;
+        struct charlie_entry_t *charlie_entry;
 
         cursor_upper_limit.sequence = charlie_cursor->sequence;
         if (charlie_entry_processor_barrier_wait_for_nonblocking(args->charlie, &cursor_upper_limit)) {
                 idx = 0;
                 total = 0;
                 for (n.sequence = charlie_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
-                        charlie_entry = charlie_ring_buffer_show_entry(args->charlie, &n);
+                        charlie_entry = charlie_ring_buffer_acquire_entry(args->charlie, &n);
 
                         vdata[idx].iov_len = getul(charlie_entry->content);
-                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, (char*)charlie_entry->content, &vdata[idx].iov_len, args);
+                        vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, charlie_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
                         ++idx;
@@ -680,7 +695,7 @@ pusher_thread_func(void *arg)
         do {
                 // alfa
                 rval = push_alfa(args->flushing, &alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
+		if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
@@ -827,7 +842,7 @@ FIX_Pusher::push(const size_t len,
                 return EINVAL;
 		
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
-        if (LIKELY(len <= (alfa_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
+        if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
                 alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor);
                 alfa_entry = alfa_ring_buffer_acquire_entry(alfa_, &alfa_cursor);
 

@@ -123,18 +123,11 @@
  */
 
 /*
- * Alfa) Many publishers, one entry processor, 4K entry size, 1024 entries
- *
- * Bravo) Many publishers, one entry processor, sizeof(size_t)+sizeof(char*) entry size, 512 entries
- *
- * Charlie) One publisher, one entry processor, 512 byte entry size, 512 entries
- *
- * Delta) One publisher, many entry processors, sizeof(size_t)+sizeof(char*) entry size, 512 entries
+ * Delta) One publisher, many entry processors (but only one registered), sizeof(size_t)+sizeof(char*) entry size, 512 entries
  *
  * Echo) One publisher, one entry processor, 512 byte entry size, 512 entries
  *
  * Foxtrot) One publisher, one entry processor, 8K entry size, 512 entries
- *
  */
 
 #include <stdio.h>
@@ -205,6 +198,57 @@ get_FIX_checksum(const char *msg, size_t len)
 	return (sum % 256);
 }
 
+/*
+ * OK, this is butt ugly, but I need a fast solution. The maximum
+ * value of a uin64_t (18446744073709551615) has 20 digits. 0 (zero)
+ * is returned for larger numbers.
+ */
+static inline int
+get_digit_count(const uint64_t num)
+{
+        if (10 > num)
+                return 1;
+        if (100 > num)
+                return 2;
+        if (1000 > num)
+                return 3;
+        if (10000 > num)
+                return 4;
+        if (100000 > num)
+                return 5;
+        if (1000000 > num)
+                return 6;
+        if (10000000 > num)
+                return 7;
+        if (100000000 > num)
+                return 8;
+        if (1000000000 > num)
+                return 9;
+        if (10000000000 > num)
+                return 10;
+        if (100000000000 > num)
+                return 11;
+        if (1000000000000 > num)
+                return 12;
+        if (10000000000000 > num)
+                return 13;
+        if (100000000000000 > num)
+                return 14;
+        if (1000000000000000 > num)
+                return 15;
+        if (10000000000000000 > num)
+                return 16;
+        if (100000000000000000 > num)
+                return 17;
+        if (1000000000000000000 > num)
+                return 18;
+        if (10000000000000000000ULL > num)
+                return 19;
+        if (UINT64_MAX >= num)
+                return 20;
+
+        return 0;
+}
 
 /*
  * Content of delta, echo and foxtrotr disruptor entries:
@@ -217,12 +261,20 @@ get_FIX_checksum(const char *msg, size_t len)
   */
 
 /*
- * Delta) One publisher, many entry processors,
+ * Delta) One publisher, many entry processors but we need to
+ * serialize access to delta, so effectively we only have one. At
+ * least for now. Alternatively we need poppers to maintain a
+ * registration number and a counter themselves...
+ *
+ * TODO: Test what the fastest approah is. I'll implement the
+ * appropiate pop() method so that I'll have it ready when
+ * performance testing commences.
+ *
  * sizeof(size_t)+sizeof(char*) entry size, 128 entries
  *
  */
 #define DELTA_QUEUE_LENGTH (128) // MUST be a power of two
-#define DELTA_ENTRY_PROCESSORS (32)
+#define DELTA_ENTRY_PROCESSORS (16) // maybe more later
 struct delta_t {
 	size_t size;
 	void *data;
@@ -350,7 +402,7 @@ splitter_thread_func(void *arg)
 	uint32_t entry_length;
 	uint32_t body_length;
 	uint32_t bytes_left_to_copy;
-	char length_str[32];
+	char length_str[32] = { '\0' };
 	size_t bs_pos;
 	char *msg_type;
 	uint64_t msg_seq_number;
@@ -383,6 +435,7 @@ splitter_thread_func(void *arg)
 	// register entry processor for foxtrot
 	//
 	foxtrot_cursor.sequence = foxtrot_entry_processor_barrier_register(args->foxtrot, &foxtrot_reg_number);
+	cursor_upper_limit.sequence = foxtrot_cursor.sequence;
 
 	// acquire publisher entries
 	delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
@@ -396,7 +449,6 @@ splitter_thread_func(void *arg)
 	bytes_left_to_copy = 0;
 	state = FindingBeginString;
 	do {
-		cursor_upper_limit.sequence = foxtrot_cursor.sequence;
 		if (!foxtrot_entry_processor_barrier_wait_for_nonblocking(args->foxtrot, &cursor_upper_limit))
 			continue;
 
@@ -411,45 +463,42 @@ splitter_thread_func(void *arg)
 						++bs_pos;
 						continue;
 					}
-					if ('\0' != args->begin_string[bs_pos])
+					if ('\0' == args->begin_string[bs_pos])
 						state = FindingBodyLength;
 					bs_pos = 0;
-					break;
 				case FindingBodyLength:
+					body_length = 0;
 					length_str[l] = *(char*)(foxtrot_entry->content + sizeof(uint32_t) + k);
-					++l; // for 64bit systems this is safe as the largest number of digits is 20
-					if (args->soh == length_str[l]) {
-						length_str[l] = '\0';						
-						body_length = atoll(length_str);
-						bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
+					if (args->soh != length_str[l++]) // for 64bit systems this is safe as the largest number of digits is 20
+						continue;
 
-						if (delta_entry->content.size < strlen(args->begin_string) + strlen(length_str) + body_length + 1 + 7) {
-							free(delta_entry->content.data);
-							delta_entry->content.size = strlen(args->begin_string) + strlen(length_str) + body_length + 1 + 7;
-							delta_entry->content.data = malloc(delta_entry->content.size);
-							if (!delta_entry->content.data) {
-								M_ALERT("no memory");
-								state = FindingBeginString; // skip this message and hope for better memory conditions later
-								l = 0;
-								break;
-							}
+					length_str[--l] = '\0';						
+					body_length = atoll(length_str);
+					bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
+					if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
+						free(delta_entry->content.data);
+						delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
+						delta_entry->content.data = malloc(delta_entry->content.size);
+						if (!delta_entry->content.data) {
+							M_ALERT("no memory");
+							state = FindingBeginString; // skip this message and hope for better memory conditions later
+							l = 0;
+							break;
 						}
-
-						memcpy(delta_entry->content.data, args->begin_string, strlen(args->begin_string)); // 8=FIX.X.Y<SOH>9=
-						memcpy((char*)delta_entry->content.data + strlen(args->begin_string), length_str, strlen(length_str)); // <LENGTH>
-						state = CopyingBody;
-						l = 0;
 					}
-					break;
+					state = CopyingBody;
+					l = 0;
 				case CopyingBody:
+					memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
+					memcpy((char*)delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
 					if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
-						memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
+						memcpy((char*)delta_entry->content.data + args->begin_string_length + strlen(length_str), 
 						       foxtrot_entry->content + sizeof(uint32_t) + k, 
 						       bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
 						msg_type = get_message_type(args->soh, delta_entry);
 						if (is_session_message(msg_type)) {
 							if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
-								M_ALERT("o versized session message");
+								M_ALERT("oversized session message");
 							} else {
 								while (*msg_type) {
 									++msg_type;
@@ -485,7 +534,6 @@ splitter_thread_func(void *arg)
 				default:
 					abort();
 				}
-
  			}
 			/* Should we release each entry as we are done
 			 * with it or the entire batch in one go...?
@@ -504,8 +552,8 @@ splitter_thread_func(void *arg)
 			 */
 			foxtrot_entry_processor_barrier_release_entry(args->foxtrot, &foxtrot_reg_number, &n);
 		}
+		foxtrot_cursor.sequence = ++cursor_upper_limit.sequence;
 	} while (1);
-
 	foxtrot_entry_processor_barrier_unregister(args->foxtrot, &foxtrot_reg_number);
 
 	return NULL;
@@ -516,6 +564,7 @@ sucker_thread_func(void *arg)
 {
 	void *buf;
 	ssize_t rval;
+	int entry_open = 0;
 	struct cursor_t foxtrot_cursor;
 	struct foxtrot_entry_t *foxtrot_entry = NULL;
 
@@ -528,6 +577,7 @@ sucker_thread_func(void *arg)
 	// pull data from source_fd onto foxtrot until told to stop
 	while (!get_flag(args->terminate_sucker)) {
 		foxtrot_publisher_port_next_entry_blocking(args->foxtrot, &foxtrot_cursor);
+		entry_open = 1;
 		foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
 		buf = foxtrot_entry->content + sizeof(uint32_t);
 	again:
@@ -554,10 +604,13 @@ sucker_thread_func(void *arg)
 			break;
 		}
 		foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+		entry_open = 0;
 	}
 out:
-	setul(foxtrot_entry->content, 0);
-	foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+	if (entry_open) {
+		setul(foxtrot_entry->content, 0);
+		foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+	}
 	set_flag(args->sucker_running, 0);
 
 	return NULL;
@@ -613,6 +666,10 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
 			goto err;
 		}
 		delta_ring_buffer_init(delta_);
+
+		// register and setup single entry processor
+		delta_cursor_upper_limit_.sequence = delta_entry_processor_barrier_register(delta_, &delta_reg_number_);
+		delta_n_.sequence = delta_cursor_upper_limit_.sequence;
 	}
 
 	if (!echo_) {
@@ -675,10 +732,48 @@ err:
 }
 
 int
-FIX_Popper::pop(size_t * const /*len*/,
-		void ** /*data*/)
+FIX_Popper::pop(size_t * const len,
+		void **data)
+{
+        struct delta_entry_t *delta_entry;
+        struct cursor_t n;
+
+	if (guard_.enter()) {
+		M_ALERT("could not lock");
+		return 1;
+	}
+	
+	n.sequence = __atomic_fetch_add(&delta_n_.sequence, 1, __ATOMIC_RELEASE);
+	if (n.sequence == delta_cursor_upper_limit_.sequence) {
+                delta_entry_processor_barrier_wait_for_blocking(delta_, &delta_cursor_upper_limit_);
+                __atomic_fetch_add(&delta_cursor_upper_limit_.sequence, 1, __ATOMIC_RELEASE);
+	}
+	delta_entry = delta_ring_buffer_acquire_entry(delta_, &n);
+
+	*len = delta_entry->content.size;
+	*data = delta_entry->content.data;
+	delta_entry->content.size = 0;
+	delta_entry->content.data = NULL;
+	delta_entry_processor_barrier_release_entry(delta_, &delta_reg_number_, &n);
+
+	guard_.leave();
+
+	return 0;
+}
+
+int 
+FIX_Popper::pop(struct cursor_t * const /*cursor*/,
+		struct count_t * const /*reg_number*/,
+		size_t * const /*len*/, 
+		void **/*data*/)
 {
 	return 0;
+}
+
+void 
+FIX_Popper::register_popper(struct cursor_t * const /*cursor*/,
+			    struct count_t * const /*reg_number*/)
+{
 }
 
 int
