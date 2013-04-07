@@ -277,7 +277,7 @@ get_digit_count(const uint64_t num)
 #define DELTA_ENTRY_PROCESSORS (16) // maybe more later
 struct delta_t {
         size_t size;
-        void *data;
+        uint8_t *data;
 };
 
 DEFINE_ENTRY_TYPE(struct delta_t, delta_entry_t);
@@ -457,7 +457,7 @@ splitter_thread_func(void *arg)
                                         if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
                                                 delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
-                                                delta_entry->content.data = malloc(delta_entry->content.size);
+                                                delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size);
                                                 if (!delta_entry->content.data) {
                                                         M_ALERT("no memory");
                                                         state = FindingBeginString; // skip this message and hope for better memory conditions later
@@ -467,7 +467,7 @@ splitter_thread_func(void *arg)
                                         state = CopyingBody;
                                 case CopyingBody:
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
-                                        memcpy((char*)delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
+                                        memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
                                         if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
                                                 memcpy((char*)delta_entry->content.data + args->begin_string_length + strlen(length_str), 
                                                        foxtrot_entry->content + sizeof(uint32_t) + k, 

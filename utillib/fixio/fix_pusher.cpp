@@ -309,7 +309,7 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
 #define BRAVO_ENTRY_PROCESSORS (1)
 struct bravo_t {
         size_t size;
-        void *data;
+        uint8_t *data;
 };
 
 DEFINE_ENTRY_TYPE(struct bravo_t, bravo_entry_t);
@@ -863,7 +863,7 @@ FIX_Pusher::push(const size_t len,
                 } else {
                         free(bravo_entry->content.data);
                         bravo_entry->content.size = len;
-                        bravo_entry->content.data = malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
+                        bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
                 }
                 strcpy((char*)bravo_entry->content.data, msg_type);
                 memcpy((char*)bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
