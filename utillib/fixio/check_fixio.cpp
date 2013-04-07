@@ -276,7 +276,7 @@ main(int argc, char **argv)
         }
 
 	// run the tests
-        srunner_run_all(sr, CK_NORMAL);
+        srunner_run_all(sr, CK_VERBOSE);
         number_failed = srunner_ntests_failed(sr);
         srunner_free(sr);
 
