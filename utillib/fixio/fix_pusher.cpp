@@ -108,7 +108,6 @@
  *            and the size of it)
  *
  *
- *
  *             Reads data and extract complete messages one at a time. Writes one message to one entry in the
  *                 fast disruptor or one message to the fast disruptor if the message does n't fit in the
  *                    fast disruptor. Session messages always goes to the session disruptor.
@@ -522,7 +521,6 @@ push_alfa(const bool /* flushing */,
                 total = 0;
                 for (n.sequence = alfa_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         alfa_entry = alfa_ring_buffer_acquire_entry(args->alfa, &n);
-
                         vdata[idx].iov_len = getul(alfa_entry->content); // length of partial message
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, alfa_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;

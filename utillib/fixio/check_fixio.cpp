@@ -182,9 +182,9 @@ START_TEST(test_FIX_Popper_create)
 END_TEST
 
 /*
- * Test send and recieve of test messages
+ * Test send and recieve of test messages sequentially
  */
-START_TEST(test_FIX_send_and_recv)
+START_TEST(test_FIX_send_and_recv_sequentially)
 {
         int n;
         size_t len;
@@ -209,6 +209,43 @@ START_TEST(test_FIX_send_and_recv)
 }
 END_TEST
 
+/*
+ * Test send and recieve of test messages in bursts
+ */
+START_TEST(test_FIX_send_and_recv_in_bursts)
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
+        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+	popper->start();
+	pusher->start();
+
+        for (n = 0; n < 16; ++n) {
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+        }
+
+	int k;
+        for (n = 0; n < 16; ++n) {
+                fail_unless(0 == popper->pop(&len, &msg), NULL);
+		// M_ALERT("n = %d, len = %d", n, len);
+		printf("\n Msg #%d\n", n);
+		for (k = 0; k < len; ++k)
+			printf("%c", ((char*)msg)[k]);
+		printf("\n");
+                fail_unless(len == strlen(complete_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+        }
+}
+END_TEST
+
 Suite*
 fixio_suite(void)
 {
@@ -218,7 +255,8 @@ fixio_suite(void)
         TCase *tc_core = tcase_create("Core");
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);
-        tcase_add_test(tc_core, test_FIX_send_and_recv);
+        tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially);
+        tcase_add_test(tc_core, test_FIX_send_and_recv_in_bursts);
         suite_add_tcase(s, tc_core);
 
         return s;
