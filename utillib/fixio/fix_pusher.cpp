@@ -167,7 +167,7 @@
 #define MSG_TYPE_MAX_LENGTH (16)
 
 struct pusher_thread_args_t {
-	bool flushing;
+        bool flushing;
         int *terminate;
         int *running;
         int *error;
@@ -177,7 +177,7 @@ struct pusher_thread_args_t {
         charlie_io_t *charlie;
         const char *FIX_start;
         int FIX_start_length;
-	char soh;
+        char soh;
 };
 
 static inline void
@@ -466,29 +466,29 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         int body_length_digits;
         int msg_seq_number_digits;
         unsigned int checksum;
-	char * const buf = (char*)buffer;
+        char * const buf = (char*)buffer;
 
         ++(*msg_seq_number);
         msg_seq_number_digits = get_digit_count(*msg_seq_number);
 
-	// We must construct the prefix string,
-	// e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
-	// the body length. The body length fills a variable amont of
-	// characters therefore we must know it beforehand.
+        // We must construct the prefix string,
+        // e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
+        // the body length. The body length fills a variable amont of
+        // characters therefore we must know it beforehand.
         body_length =
                 + 3                                /* 35= */
                 + strlen((buf + sizeof(uint32_t))) /* msg type */
                 + 1                                /* <SOH> */
                 + 3                                /* 34= */
                 + msg_seq_number_digits            /* digits in sequence number */
-		+ *msg_length                      /* length of partial FIX message */
+                + *msg_length                      /* length of partial FIX message */
                 - 3;                               /* the 3 bytes comprising "10=" in the end of the partial FIX message must not be included in the body length */
         body_length_digits = get_digit_count(body_length);
         total_prefix_length = args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
 
         // build message
-        sprintf((char*)(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length), "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
-	*(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
+        sprintf(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
+        *(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
 
         // add final checksum
         checksum = get_FIX_checksum(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
@@ -502,7 +502,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 
 static int
 push_alfa(const bool /* flushing */,
-	  struct cursor_t * const alfa_cursor,
+          struct cursor_t * const alfa_cursor,
           const struct count_t * const alfa_reg_number,
           uint64_t * const msg_seq_number,
           struct pusher_thread_args_t * const args,
@@ -549,7 +549,7 @@ push_alfa(const bool /* flushing */,
 
 static int
 push_bravo(const bool /* flushing */,
-	   struct cursor_t * const bravo_cursor,
+           struct cursor_t * const bravo_cursor,
            const struct count_t * const bravo_reg_number,
            uint64_t * const msg_seq_number,
            struct pusher_thread_args_t * const args,
@@ -597,7 +597,7 @@ push_bravo(const bool /* flushing */,
 
 static int
 push_charlie(const bool /* flushing */,
-	     struct cursor_t * const charlie_cursor,
+             struct cursor_t * const charlie_cursor,
              const struct count_t * const charlie_reg_number,
              uint64_t * const msg_seq_number,
              struct pusher_thread_args_t * const args,
@@ -664,20 +664,20 @@ pusher_thread_func(void *arg)
         struct pusher_thread_args_t *args = (struct pusher_thread_args_t*)arg;
         if (!args) {
                 M_ERROR("pusher thread cannot run");
-		abort();
+                abort();
         }
 
         struct iovec *vdata = (struct iovec*)malloc(sizeof(struct iovec)*IOV_MAX);
         if (!vdata) {
                 M_ALERT("no memory");
-		set_flag(args->error, ENOMEM);
-		set_flag(args->running, 0);
+                set_flag(args->error, ENOMEM);
+                set_flag(args->running, 0);
                 return NULL;
         }
 
         // Get last message sequence number sent - tag 34.  The
-	// sequence number will be incremented whenever a message is
-	// sent.
+        // sequence number will be incremented whenever a message is
+        // sent.
         msg_seq_number = get_latest_msg_seq_number_sent();
 
         //
@@ -693,7 +693,7 @@ pusher_thread_func(void *arg)
         do {
                 // alfa
                 rval = push_alfa(args->flushing, &alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
-		if (rval) {
+                if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
@@ -726,17 +726,17 @@ out:
 FIX_Pusher::FIX_Pusher(const char soh)
         : alfa_max_data_length_(ALFA_MAX_DATA_SIZE),
           charlie_max_data_length_(CHARLIE_MAX_DATA_SIZE),
-	  soh_(soh)
+          soh_(soh)
 {
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
         sink_fd_ = -1;
-	dev_null_ = -1;
+        dev_null_ = -1;
         error_ = 0;
         alfa_ = NULL;
         bravo_ = NULL;
         charlie_ = NULL;
-	args_ = NULL;
+        args_ = NULL;
         set_flag(&running_, 0);
         set_flag(&terminate_, 1);
 }
@@ -744,12 +744,12 @@ FIX_Pusher::FIX_Pusher(const char soh)
 bool
 FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
 {
-	stop();
+        stop();
 
-	if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
+        if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
                 M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
-		goto err;
-	}
+                goto err;
+        }
         if (!FIX_start_bytes_[0] && !FIX_ver) {
                 M_ALERT("no FIX version specified");
                 goto err;
@@ -757,58 +757,58 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
         FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
 
-	if (-1 != sink_fd) {
-		if (sink_fd_)
-			close(sink_fd_);
-		sink_fd_ = sink_fd;
-	}
-	if (-1 == sink_fd_) {
-		M_ALERT("no sink file descriptor specified");
-		goto err;
-	}
+        if (-1 != sink_fd) {
+                if (sink_fd_)
+                        close(sink_fd_);
+                sink_fd_ = sink_fd;
+        }
+        if (-1 == sink_fd_) {
+                M_ALERT("no sink file descriptor specified");
+                goto err;
+        }
 
-	if (-1 == dev_null_) {
-		dev_null_ = open("/dev/null", O_WRONLY);
-		if (-1 == dev_null_) {
-			M_ALERT("could not open /dev/null: %s", strerror(errno));
-			goto err;
-		}
-	}
-	
-	if (!alfa_) {
-		alfa_ = alfa_ring_buffer_malloc();
-		if (!alfa_) {
-			M_ALERT("no memory");
-			goto err;
-		}
-		alfa_ring_buffer_init(alfa_);
-	}
+        if (-1 == dev_null_) {
+                dev_null_ = open("/dev/null", O_WRONLY);
+                if (-1 == dev_null_) {
+                        M_ALERT("could not open /dev/null: %s", strerror(errno));
+                        goto err;
+                }
+        }
+        
+        if (!alfa_) {
+                alfa_ = alfa_ring_buffer_malloc();
+                if (!alfa_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                alfa_ring_buffer_init(alfa_);
+        }
 
-	if (!bravo_) {
-		bravo_ = bravo_ring_buffer_malloc();
-		if (!bravo_) {
-			M_ALERT("no memory");
-			goto err;
-		}
-		bravo_ring_buffer_init(bravo_);
-	}
+        if (!bravo_) {
+                bravo_ = bravo_ring_buffer_malloc();
+                if (!bravo_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                bravo_ring_buffer_init(bravo_);
+        }
 
-	if (!charlie_) {
-		charlie_ = charlie_ring_buffer_malloc();
-		if (!charlie_) {
-			M_ALERT("no memory");
-			goto err;
-		}
-		charlie_ring_buffer_init(charlie_);
-	}
+        if (!charlie_) {
+                charlie_ = charlie_ring_buffer_malloc();
+                if (!charlie_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                charlie_ring_buffer_init(charlie_);
+        }
 
-	free(args_);
+        free(args_);
         args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
         if (!args_) {
                 M_ALERT("no memory");
                 goto err;
         }
-	args_->flushing = false;
+        args_->flushing = false;
         args_->terminate = &terminate_;
         args_->running = &running_;
         args_->sink_fd = sink_fd_;
@@ -818,7 +818,7 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         args_->charlie = charlie_;
         args_->FIX_start = FIX_start_bytes_;
         args_->FIX_start_length = FIX_start_bytes_length_;
-	args_->soh = soh_;
+        args_->soh = soh_;
 
         return true;
 err:
@@ -838,7 +838,7 @@ FIX_Pusher::push(const size_t len,
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
-		
+                
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
                 alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor);
@@ -866,12 +866,12 @@ FIX_Pusher::push(const size_t len,
                         bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
                 }
                 strcpy((char*)bravo_entry->content.data, msg_type);
-                memcpy((char*)bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
+                memcpy(bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
 
                 bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
         }
 
-	return get_flag(&error_);
+        return get_flag(&error_);
 }
 
 int
@@ -900,31 +900,31 @@ FIX_Pusher::session_push(const size_t len,
                 charlie_publisher_port_commit_entry_blocking(charlie_, &charlie_cursor);
         }
 
-	return get_flag(&error_);
+        return get_flag(&error_);
 }
 
 void
 FIX_Pusher::flush(void)
 {
         int n;
-	int fd;
+        int fd;
 
-	stop();
+        stop();
 
-	fd = sink_fd_;
-	sink_fd_ = dev_null_;
-	args_->flushing = true;
-	pusher_thread_func(args_);
-	args_->flushing = false;
+        fd = sink_fd_;
+        sink_fd_ = dev_null_;
+        args_->flushing = true;
+        pusher_thread_func(args_);
+        args_->flushing = false;
 
-	for (n = 0; n < BRAVO_QUEUE_LENGTH; ++n) {
-		free(bravo_->buffer[n].content.data);
-		bravo_->buffer[n].content.size = 0;
-		bravo_->buffer[n].content.data = NULL;
-	}
-	sink_fd_ = fd;
+        for (n = 0; n < BRAVO_QUEUE_LENGTH; ++n) {
+                free(bravo_->buffer[n].content.data);
+                bravo_->buffer[n].content.size = 0;
+                bravo_->buffer[n].content.data = NULL;
+        }
+        sink_fd_ = fd;
 
-	start();
+        start();
 }
 
 void
@@ -940,7 +940,7 @@ FIX_Pusher::start(void)
 {
         set_flag(&terminate_, 0);
         if (get_flag(&running_))
-		return;
+                return;
 
         if (!create_joinable_thread(&pusher_thread_id_, args_, pusher_thread_func)) {
                 M_ALERT("could not create pusher thread");

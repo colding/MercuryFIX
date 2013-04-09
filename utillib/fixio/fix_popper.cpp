@@ -447,11 +447,11 @@ splitter_thread_func(void *arg)
                                                 continue;
                                         }
                                 case FindingBodyLength:
-                                        length_str[l] = *(char*)(foxtrot_entry->content + sizeof(uint32_t) + k);
+                                        length_str[l] = *(foxtrot_entry->content + sizeof(uint32_t) + k);
                                         if (args->soh != length_str[l++]) // for 64bit systems this is safe as the largest number of digits is 20
                                                 continue;
                                         length_str[--l] = '\0';
-					l = 0;
+                                        l = 0;
                                         body_length = atoll(length_str);
                                         bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
                                         if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
@@ -469,7 +469,7 @@ splitter_thread_func(void *arg)
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
                                         memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
                                         if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
-                                                memcpy((char*)delta_entry->content.data + args->begin_string_length + strlen(length_str), 
+                                                memcpy(delta_entry->content.data + args->begin_string_length + strlen(length_str), 
                                                        foxtrot_entry->content + sizeof(uint32_t) + k, 
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 msg_type = (char*)delta_entry->content.data + k + 4;
@@ -492,7 +492,7 @@ splitter_thread_func(void *arg)
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;
                                         } else {
-                                                memcpy((char*)delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
+                                                memcpy(delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 bytes_left_to_copy -= entry_length - k;

@@ -85,13 +85,13 @@ const char *partial_messages[16] = {
         "|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=",
         "|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=",
         "|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=",
-	"|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
-	"|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
-	"|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=",
-	"|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=",
-	"|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=",
-	"|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
-	"|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
+        "|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
+        "|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=",
+        "|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=",
+        "|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=",
+        "|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
 };
 
 /*
@@ -107,13 +107,13 @@ const char *complete_messages[16] = {
         "8=FIX.4.1|9=138|35=8|34=7|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=019|",
         "8=FIX.4.1|9=82|35=3|34=8|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=083|",
         "8=FIX.4.1|9=82|35=3|34=9|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=085|",
-	"8=FIX.4.1|9=62|35=A|34=10|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=135|",
-	"8=FIX.4.1|9=50|35=0|34=11|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=105|",
-	"8=FIX.4.1|9=104|35=D|34=12|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=041|",
-	"8=FIX.4.1|9=104|35=D|34=13|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=026|",
-	"8=FIX.4.1|9=109|35=D|34=14|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=105|",
-	"8=FIX.4.1|9=105|35=F|34=15|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=187|",
-	"8=FIX.4.1|9=105|35=F|34=16|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=186|",
+        "8=FIX.4.1|9=62|35=A|34=10|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=135|",
+        "8=FIX.4.1|9=50|35=0|34=11|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=105|",
+        "8=FIX.4.1|9=104|35=D|34=12|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=041|",
+        "8=FIX.4.1|9=104|35=D|34=13|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=026|",
+        "8=FIX.4.1|9=109|35=D|34=14|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=105|",
+        "8=FIX.4.1|9=105|35=F|34=15|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=187|",
+        "8=FIX.4.1|9=105|35=F|34=16|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=186|",
 };
 
 /*
@@ -129,13 +129,13 @@ const char *message_types[16] = {
         "8",
         "3",
         "3",
-	"A",
-	"0",
-	"D",
-	"D",
-	"D",
-	"F",
-	"F",
+        "A",
+        "0",
+        "D",
+        "D",
+        "D",
+        "F",
+        "F",
 };
 
 /*
@@ -197,8 +197,8 @@ START_TEST(test_FIX_send_and_recv_sequentially)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-	pusher->start();
-	popper->start();
+        pusher->start();
+        popper->start();
 
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
@@ -225,21 +225,16 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-	popper->start();
-	pusher->start();
+        popper->start();
+        pusher->start();
 
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
         }
 
-	int k;
+        int k;
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
-		// M_ALERT("n = %d, len = %d", n, len);
-		printf("\n Msg #%d\n", n);
-		for (k = 0; k < len; ++k)
-			printf("%c", ((char*)msg)[k]);
-		printf("\n");
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
         }
@@ -268,14 +263,14 @@ main(int argc, char **argv)
         int number_failed;
         Suite *s = fixio_suite();
         SRunner *sr = srunner_create(s);
-	
+        
         // initiate logging
         if (!init_logging(false, "check_fixio")) {
                 fprintf(stderr, "could not initiate logging\n");
                 return EXIT_FAILURE;
         }
 
-	// run the tests
+        // run the tests
         srunner_run_all(sr, CK_VERBOSE);
         number_failed = srunner_ntests_failed(sr);
         srunner_free(sr);
