@@ -730,6 +730,7 @@ FIX_Pusher::FIX_Pusher(const char soh)
 {
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
+	pusher_thread_id_ = pthread_self();
         sink_fd_ = -1;
         dev_null_ = -1;
         error_ = 0;
@@ -737,7 +738,6 @@ FIX_Pusher::FIX_Pusher(const char soh)
         bravo_ = NULL;
         charlie_ = NULL;
         args_ = NULL;
-        set_flag(&running_, 0);
         set_flag(&terminate_, 1);
 }
 
@@ -810,7 +810,6 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         }
         args_->flushing = false;
         args_->terminate = &terminate_;
-        args_->running = &running_;
         args_->sink_fd = sink_fd_;
         args_->error = &error_;
         args_->alfa = alfa_;
@@ -931,21 +930,21 @@ void
 FIX_Pusher::stop(void)
 {
         set_flag(&terminate_, 1);
-        if (get_flag(&running_))
+	if (!pthread_equal(pusher_thread_id_, pthread_self()))
                 pthread_join(pusher_thread_id_, NULL);
+	pusher_thread_id_ = pthread_self();
 }
 
 void
 FIX_Pusher::start(void)
 {
         set_flag(&terminate_, 0);
-        if (get_flag(&running_))
-                return;
+	if (!pthread_equal(pusher_thread_id_, pthread_self()))
+                 return;
 
         if (!create_joinable_thread(&pusher_thread_id_, args_, pusher_thread_func)) {
                 M_ALERT("could not create pusher thread");
                 abort();
         }
-        set_flag(&running_, 1);
 }
 

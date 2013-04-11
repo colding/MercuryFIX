@@ -544,15 +544,15 @@ sucker_thread_func(void *arg)
 
         // pull data from source_fd onto foxtrot until told to stop
         while (!get_flag(args->terminate_sucker)) {
-                M_ALERT("waiting for entry");
+//                M_ALERT("waiting for entry");
                 foxtrot_publisher_port_next_entry_blocking(args->foxtrot, &foxtrot_cursor);
-                M_ALERT("got entry %d", foxtrot_cursor.sequence);
+//                M_ALERT("got entry %d", foxtrot_cursor.sequence);
                 entry_open = 1;
                 foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
                 buf = foxtrot_entry->content + sizeof(uint32_t);
         again:
                 rval = recvfrom(args->source_fd, buf, FOXTROT_MAX_DATA_SIZE, 0, NULL, NULL);
-                M_ALERT("recieved %d (%s)", rval, (char*)buf);
+//                M_ALERT("recieved %d (%s)", rval, (char*)buf);
                 switch (rval) {
                 case 0:
                         M_ERROR("peer closed connection");
@@ -574,9 +574,9 @@ sucker_thread_func(void *arg)
                         setul(foxtrot_entry->content, rval);
                         break;
                 }
-                M_ALERT("will commit");
+//                M_ALERT("will commit");
                 foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
-                M_ALERT("has committed");
+//                M_ALERT("has committed");
                 entry_open = 0;
         }
 out:
@@ -597,13 +597,13 @@ FIX_Popper::FIX_Popper(const char soh)
 {
         source_fd_ = -1;
         memset(begin_string_, '\0', sizeof(begin_string_));
+	sucker_thread_id_ = pthread_self();
         error_ = 0;
         delta_ = NULL;
         echo_ = NULL;
         foxtrot_ = NULL;
         splitter_args_ = NULL;
         sucker_args_ = NULL;
-        set_flag(&running_, 0);
         set_flag(&terminate_, 1);
 }
 
@@ -694,7 +694,6 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 goto err;
         }
         sucker_args_->terminate_sucker = &terminate_;
-        sucker_args_->sucker_running = &running_;
         sucker_args_->source_fd = source_fd_;
         sucker_args_->error = &error_;
         sucker_args_->foxtrot = foxtrot_;
@@ -760,20 +759,20 @@ void
 FIX_Popper::stop(void)
 {
         set_flag(&terminate_, 1);
-        if (get_flag(&running_))
+	if (!pthread_equal(sucker_thread_id_, pthread_self()))
                 pthread_join(sucker_thread_id_, NULL);
+	sucker_thread_id_ = pthread_self();
 }
 
 void
 FIX_Popper::start(void)
 {
         set_flag(&terminate_, 0);
-        if (get_flag(&running_))
-                return;
+	if (!pthread_equal(sucker_thread_id_, pthread_self()))
+		return;
 
         if (!create_joinable_thread(&sucker_thread_id_, sucker_args_, sucker_thread_func)) {
                 M_ALERT("could not create sucker thread");
                 abort();
         }
-        set_flag(&running_, 1);
 }
