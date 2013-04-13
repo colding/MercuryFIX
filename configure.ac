@@ -463,12 +463,6 @@ LDFLAGS="-L$MERCURY_top_dir/ $LDFLAGS"
 AC_SUBST(LDFLAGS)
 
 dnl
-dnl RPM settings
-dnl
-RPM_SPEC_CONFIGURE='%configure --enable-dist=yes --enable-debug=yes --enable-devel=yes'
-AC_SUBST([RPM_SPEC_CONFIGURE])
-
-dnl
 dnl Check if this is a distribution
 dnl
 AM_CONDITIONAL(THIS_IS_NOT_A_DISTRIBUTION, [test -f ./nodist])
