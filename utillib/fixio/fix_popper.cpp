@@ -472,8 +472,7 @@ splitter_thread_func(void *arg)
                                         if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
                                                 delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
-                                                delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size +1); // <== +1 DEBUG
-                                                memset(delta_entry->content.data, '\0', delta_entry->content.size + 1); // <== memset DEBUG
+                                                delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size);
                                                 if (!delta_entry->content.data) {
                                                         M_ALERT("no memory");
                                                         state = FindingBeginString; // skip this message and hope for better memory conditions later
