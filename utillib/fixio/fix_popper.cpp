@@ -186,7 +186,7 @@ get_flag(int *flag)
  * included in the checksum calculation.
  */
 static inline int
-get_FIX_checksum(const char *msg, size_t len)
+get_FIX_checksum(const uint8_t *msg, size_t len)
 {
         uint64_t sum = 0;
         size_t n;
@@ -379,6 +379,7 @@ void*
 splitter_thread_func(void *arg)
 {
         enum FIX_Parse_State state;
+	char chksum[4];
         int l;
         size_t offset;
         uint32_t k;
@@ -488,22 +489,25 @@ splitter_thread_func(void *arg)
                                                 memcpy(delta_entry->content.data + offset,
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
-                                                msg_type = (char*)delta_entry->content.data + k + 4;
-                                                if (is_session_message(args->soh, msg_type)) {
-                                                        if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
-                                                                M_ALERT("oversized session message");
-                                                        } else {
-                                                                setul(echo_entry->content, delta_entry->content.size);
-                                                                memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
-                                                                echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
-                                                                echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
-                                                                echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-                                                        }
-                                                } else {
-                                                        delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
-                                                        delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
-                                                        delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-                                                }
+						sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
+						if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
+							msg_type = (char*)delta_entry->content.data + k + 4;
+							if (is_session_message(args->soh, msg_type)) {
+								if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
+									M_ALERT("oversized session message");
+								} else {
+									setul(echo_entry->content, delta_entry->content.size);
+									memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
+									echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
+									echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+									echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+								}
+							} else {
+								delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
+								delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+								delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+							}
+						}
                                                 ++msg_seq_number;
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;

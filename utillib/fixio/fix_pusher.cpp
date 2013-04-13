@@ -198,7 +198,7 @@ get_flag(int *flag)
  * included in the checksum calculation.
  */
 static inline unsigned int
-get_FIX_checksum(const char *msg, size_t len)
+get_FIX_checksum(const uint8_t *msg, size_t len)
 {
         uint64_t sum = 0;
         size_t n;
@@ -491,7 +491,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         *(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
 
         // add final checksum
-        checksum = get_FIX_checksum(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
+        checksum = get_FIX_checksum((uint8_t*)buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
         sprintf((buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *msg_length), "%03u%c", checksum, args->soh);
 
         // adjust data length to new value
