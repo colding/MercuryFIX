@@ -54,40 +54,22 @@
 #include "stdlib/network/net_types.h"
 
 /*
- * Will ensure that "len" bytes from "buf" is send over
- * "socket".
+ * Will ensure that "len" bytes from "buf" is send over "socket".
  *
- * send_all() returns true unless an error occurred, in which
- * case false is returned and the external value errno is set.
+ * send_all() returns 1 (one) unless an error occurred, in which case
+ * 0 (zero) is returned and the external value errno is set.
  */
-static inline bool
-send_all(socket_t socket,
+extern int
+send_all(int sock,
          const uint8_t * const buf,
-         const int len)
-{
-        int total = 0;
-        int bytesleft = len;
-        int n;
-
-        while (total < len) {
-                n = send(socket.socket, buf + total, bytesleft, 0);
-                if (-1 == n) {
-                        M_ERROR("error sending all bytes: %s", strerror(errno));
-                        return false;
-                }
-                total += n;
-                bytesleft -= n;
-        }
-
-        return true;
-}
+         const int len);
 
 /*
  * Sets the recv timeout value in seconds. Returns 1 (one) on success,
  * 0 (zero) otherwise.
  */
 extern int
-set_recv_timeout(socket_t socket,
+set_recv_timeout(int sock,
                  const timeout_t time_out);
 
 /*
@@ -95,16 +77,20 @@ set_recv_timeout(socket_t socket,
  * 0 (zero) otherwise.
  */
 extern int
-set_send_timeout(socket_t socket,
+set_send_timeout(int sock,
                  const timeout_t time_out);
 
+/*
+ * Sets the minimum recieve size in bytes. Returns 1 (one) on success,
+ * 0 (zero) otherwise.
+ */
 extern int
-set_min_recv_sice(socket_t socket,
+set_min_recv_sice(int sock,
                   const int ipc_header_size);
 
 /*
  * Will send a file descriptor over a local socket along with "len" of
- * data residing in "data".  Returns 0 if successful, non-zero
+ * data residing in "data".  Returns 0 (zero) if successful, 1 (one)
  * otherwise.
  */
 extern int
@@ -116,8 +102,8 @@ send_fd(int fd,
 
 /*
  * Recieves a file descriptor over a local socket along with at most
- * "len" bytes of data residing in "buf". Returns 0 if successful,
- * non-zero otherwise.
+ * "len" bytes of data residing in "buf". Returns 0 (zero) if
+ * successful, 1 (one) otherwise.
  */
 extern int
 recv_fd(int fd,
@@ -127,43 +113,20 @@ recv_fd(int fd,
         uint32_t * const bytes_recv);
 
 
-static inline bool
-set_non_blocking(socket_t socket)
-{
-	int flags;
+/*
+ * Makes the socket non-blocking,
+ *
+ * Returns 1 (one) unless an error occurred, in which case 0 (zero) is
+ * returned and the external value errno is set.
+ */
+extern int
+set_non_blocking(int sock);
 
-	flags = fcntl(socket.socket, F_GETFL, 0);
-	if (unlikely(-1 == flags)) {
-		M_ERROR("could not get flags", strerror(errno));
-		return false;
-	}
-
-	flags = fcntl(socket.socket, F_SETFL, flags | O_NONBLOCK);
-	if (unlikely(-1 == flags)) {
-		M_ERROR("could not set flags", strerror(errno));
-		return false;
-	}
-
-	return true;
-}
-
-static inline bool
-set_blocking(socket_t socket)
-{
-	int flags;
-
-	flags = fcntl(socket.socket, F_GETFL, 0);
-	if (unlikely(-1 == flags)) {
-		M_ERROR("could not get flags", strerror(errno));
-		return false;
-	}
-	flags &= ~O_NONBLOCK;
-
-	flags = fcntl(socket.socket, F_SETFL, flags);
-	if (unlikely(-1 == flags)) {
-		M_ERROR("could not set flags", strerror(errno));
-		return false;
-	}
-
-	return true;
-}
+/*
+ * Makes the socket blocking,
+ *
+ * Returns 1 (0ne) unless an error occurred, in which case 0 (zero) is
+ * returned and the external value errno is set.
+ */
+extern int
+set_blocking(int sock);

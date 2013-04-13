@@ -49,7 +49,29 @@
 #include "stdlib/log/log.h"
 
 int
-set_recv_timeout(socket_t socket,
+send_all(int sock,
+         const uint8_t * const buf,
+         const int len)
+{
+        int total = 0;
+        int bytesleft = len;
+        int n;
+
+        while (total < len) {
+                n = send(sock, buf + total, bytesleft, 0);
+                if (-1 == n) {
+                        M_ERROR("error sending all bytes: %s", strerror(errno));
+                        return 0;
+                }
+                total += n;
+                bytesleft -= n;
+        }
+
+        return 1;
+}
+
+int
+set_recv_timeout(int sock,
                  const timeout_t time_out)
 {
         struct timeval t;
@@ -57,8 +79,8 @@ set_recv_timeout(socket_t socket,
         t.tv_sec = time_out.seconds;
         t.tv_usec = 0;
 
-        if (setsockopt(socket.socket, SOL_SOCKET, SO_RCVTIMEO, &t, sizeof(struct timeval))) {
-                M_ERROR("could not setsockopt(SO_RECVTIMEO): %s\n", strerror(errno));
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &t, sizeof(struct timeval))) {
+                M_ERROR("could not setsockopt(SO_RECVTIMEO): %s", strerror(errno));
                 return 0;
         }
 
@@ -66,7 +88,7 @@ set_recv_timeout(socket_t socket,
 }
 
 int
-set_send_timeout(socket_t socket,
+set_send_timeout(int sock,
                  const timeout_t time_out)
 {
         struct timeval t;
@@ -74,8 +96,8 @@ set_send_timeout(socket_t socket,
         t.tv_sec = time_out.seconds;
         t.tv_usec = 0;
 
-        if (setsockopt(socket.socket, SOL_SOCKET, SO_SNDTIMEO, &t, sizeof(struct timeval))) {
-                M_ERROR("could not setsockopt(SO_SNDTIMEO): %s\n", strerror(errno));
+        if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &t, sizeof(struct timeval))) {
+                M_ERROR("could not setsockopt(SO_SNDTIMEO): %s", strerror(errno));
                 return 0;
         }
 
@@ -83,11 +105,11 @@ set_send_timeout(socket_t socket,
 }
 
 int
-set_min_recv_sice(socket_t socket,
+set_min_recv_sice(int sock,
                   const int ipc_header_size)
 {
-        if (setsockopt(socket.socket, SOL_SOCKET, SO_RCVLOWAT, &ipc_header_size, sizeof(ipc_header_size))) {
-                //M_CRITICAL("could not setsockopt(SO_RCVLOWAT): %s\n", strerror(errno));
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVLOWAT, &ipc_header_size, sizeof(ipc_header_size))) {
+                M_ERROR("could not setsockopt(SO_RCVLOWAT): %s", strerror(errno));
                 return 0;
         }
 
@@ -147,10 +169,10 @@ send_fd(int fd,
 #endif
         switch (n) {
         case EMSGSIZE:
-                //M_WARNING("message too big\n");
+                M_WARNING("message too big");
                 return EMSGSIZE;
         case -1:
-                //M_WARNING("sendmsg error: %s\n", strerror(errno));
+                M_WARNING("sendmsg error: %s", strerror(errno));
                 return 1;
         default:
                 *bytes_sent = n;
@@ -202,7 +224,7 @@ recv_fd(int fd,
 
         n = recvmsg(fd, &msg, 0);
         if (msg.msg_flags) {
-                //M_WARNING("recvmsg() had something to say, msg_flags = 0x%08x\n", msg.msg_flags);
+                M_WARNING("recvmsg() had something to say, msg_flags = 0x%08x", msg.msg_flags);
                 return 1;
         }
         if (bytes_recv)
@@ -234,4 +256,45 @@ recv_fd(int fd,
                 *recvfd = newfd;
 #endif
         return 0;
+}
+
+int
+set_non_blocking(int sock)
+{
+	int flags;
+
+	flags = fcntl(sock, F_GETFL, 0);
+	if (unlikely(-1 == flags)) {
+		M_ERROR("could not get flags", strerror(errno));
+		return 0;
+	}
+
+	flags = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+	if (unlikely(-1 == flags)) {
+		M_ERROR("could not set flags", strerror(errno));
+		return 0;
+	}
+
+	return 1;
+}
+
+int
+set_blocking(int sock)
+{
+	int flags;
+
+	flags = fcntl(sock, F_GETFL, 0);
+	if (unlikely(-1 == flags)) {
+		M_ERROR("could not get flags", strerror(errno));
+		return 0;
+	}
+	flags &= ~O_NONBLOCK;
+
+	flags = fcntl(sock, F_SETFL, flags);
+	if (unlikely(-1 == flags)) {
+		M_ERROR("could not set flags", strerror(errno));
+		return 0;
+	}
+
+	return 1;
 }

@@ -62,9 +62,5 @@ public:
 };
 
 typedef struct {
-        int socket;
-} socket_t;
-
-typedef struct {
         time_t seconds;
 } timeout_t;

@@ -56,7 +56,7 @@ get_ip_from_ifname(const int inet_family,
  * Will open and initialize a socket. Returns socket on success, -1
  * otherwise.
  */
-extern socket_t
+extern int
 create_listening_socket(const char * const interface,
 			const uint16_t port,
 			const int pf_family,
@@ -64,10 +64,10 @@ create_listening_socket(const char * const interface,
                         const bool keep_alive);
 
 /*
- * Will return a connected socket to host:port or (socket_t.socket ==
+ * Will return a connected socket to host:port or (sock ==
  * -1) in case of error.
  */
-extern socket_t
+extern int
 connect_to_listening_socket(const char * const interface,
                             const uint16_t port,
                             const int pf_family,

@@ -127,7 +127,7 @@ get_ip_from_ifname(const int inet_family,
  * otherwise.
  */
 static int
-set_socket_options(const socket_t sock)
+set_socket_options(const int sock)
 {
         int flag = 1;
         struct linger sl;
@@ -136,25 +136,25 @@ set_socket_options(const socket_t sock)
         sl.l_linger = 2;
 
 #ifdef __APPLE__
-        if (setsockopt(sock.socket, SOL_SOCKET, SO_LINGER_SEC, &sl, sizeof(sl))) {
+        if (setsockopt(sock, SOL_SOCKET, SO_LINGER_SEC, &sl, sizeof(sl))) {
                 M_CRITICAL("could not setsockopt(SO_LINGER): %s", strerror(errno));
                 return 0;
         }
-        if (setsockopt(sock.socket, SOL_SOCKET, SO_REUSEPORT, &flag, sizeof(flag))) {
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &flag, sizeof(flag))) {
                 M_CRITICAL("could not setsockopt(SO_REUSEPORT): %s", strerror(errno));
                 return 0;
         }
 #elif defined __linux__
-        if (setsockopt(sock.socket, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl))) {
+        if (setsockopt(sock, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl))) {
                 M_CRITICAL("could not setsockopt(SO_LINGER): %s", strerror(errno));
                 return 0;
         }
-        if (setsockopt(sock.socket, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag))) {
+        if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag))) {
                 M_CRITICAL("could not setsockopt(TCP_NODELAY): %s", strerror(errno));
                 return 0;
         }
 #endif
-        if (setsockopt(sock.socket, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag))) {
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag))) {
                 M_CRITICAL("could not setsockopt(SO_REUSEADDR): %s", strerror(errno));
                 return 0;
         }
@@ -167,14 +167,14 @@ set_socket_options(const socket_t sock)
  * (one) on success, 0 (zero) otherwise.
  */
 static int
-set_socket_options_low_volume(const socket_t sock)
+set_socket_options_low_volume(const int sock)
 {
         const int flag = 1;
 
         if (!set_socket_options(sock))
                 return 0;
 
-        if (setsockopt(sock.socket, SOL_SOCKET, SO_KEEPALIVE, &flag, sizeof(flag))) { // SIG_PIPE!!
+        if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &flag, sizeof(flag))) { // SIG_PIPE!!
                 M_CRITICAL("could not setsockopt(SO_KEEPALIVE): %s", strerror(errno));
                 return 0;
         }
@@ -182,7 +182,7 @@ set_socket_options_low_volume(const socket_t sock)
         return 1;
 }
 
-socket_t
+int
 create_listening_socket(const char * const interface,
 			const uint16_t port,
 			const int pf_family,
@@ -190,7 +190,7 @@ create_listening_socket(const char * const interface,
                         const bool keep_alive)
 {
         int tmp;
-        socket_t sock;
+        int sock;
         char *ip = NULL;
         struct sockaddr_in s4;
         struct sockaddr_in6 s6;
@@ -198,7 +198,7 @@ create_listening_socket(const char * const interface,
         uint16_t nport;
         size_t addr_size;
 
-        sock.socket = -1;
+        sock = -1;
 
         if (SOCK_STREAM != socket_type)
                 return sock;
@@ -224,8 +224,8 @@ create_listening_socket(const char * const interface,
                 return sock;
         }
 
-        sock.socket = socket(pf_family, socket_type, 0);
-        if (-1 == sock.socket) {
+        sock = socket(pf_family, socket_type, 0);
+        if (-1 == sock) {
                 M_ERROR("could not create socket");
                 return sock;
         }
@@ -290,27 +290,27 @@ create_listening_socket(const char * const interface,
                         goto err;
                 }
         }
-        if (bind(sock.socket, listen_addr, addr_size)) {
+        if (bind(sock, listen_addr, addr_size)) {
                 M_ERROR("could not create endpoint %s:%d (%s)", interface, port, strerror(errno));
                 goto err;
         }
-        if (listen(sock.socket, SOMAXCONN)) {
+        if (listen(sock, SOMAXCONN)) {
                 M_ERROR("could not listen on socket (%s:%d): %s", interface, port, strerror(errno));
                 goto err;
         }
         goto out;
 
 err:
-        if (-1 != sock.socket) {
-                close(sock.socket);
-                sock.socket = -1;
+        if (-1 != sock) {
+                close(sock);
+                sock = -1;
         }
 
 out:
         return sock;
 }
 
-socket_t
+int
 connect_to_listening_socket(const char * const interface,
 			    const uint16_t port,
 			    const int pf_family,
@@ -318,14 +318,14 @@ connect_to_listening_socket(const char * const interface,
                             const timeout_t timeout)
 {
         int res;
-        socket_t sock;
+        int sock;
         struct addrinfo hint;
         struct addrinfo *ai;
         struct addrinfo *ai_current;
         char pstr[32] = { '\0' };
         bool close_socket = true;
 
-        sock.socket = -1;
+        sock = -1;
 
         if (SOCK_STREAM != socket_type)
                 return sock;
@@ -345,12 +345,12 @@ connect_to_listening_socket(const char * const interface,
         }
 
         for (ai_current = ai; ai_current; ai_current = ai_current->ai_next) {
-		if (-1 == sock.socket) {
-			close(sock.socket);
-                        sock.socket = -1;
+		if (-1 == sock) {
+			close(sock);
+                        sock = -1;
 		}
-                sock.socket = socket(ai_current->ai_family, ai_current->ai_socktype, ai_current->ai_protocol);
-                if (-1 == sock.socket)
+                sock = socket(ai_current->ai_family, ai_current->ai_socktype, ai_current->ai_protocol);
+                if (-1 == sock)
                         continue;
 
                 if (!set_send_timeout(sock, timeout)) {
@@ -358,7 +358,7 @@ connect_to_listening_socket(const char * const interface,
                         continue;
                 }
                 do {
-                        if (!connect(sock.socket, ai_current->ai_addr, ai_current->ai_addrlen)) {
+                        if (!connect(sock, ai_current->ai_addr, ai_current->ai_addrlen)) {
 				close_socket = false;
                                 goto done;
 			}
@@ -377,8 +377,8 @@ connect_to_listening_socket(const char * const interface,
 done:
         freeaddrinfo(ai);
 	if (close_socket) {
-		close(sock.socket);
-		sock.socket = -1;
+		close(sock);
+		sock = -1;
 	}
         return sock;
 
