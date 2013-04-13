@@ -380,6 +380,7 @@ splitter_thread_func(void *arg)
 {
         enum FIX_Parse_State state;
         int l;
+	size_t offset;
         uint32_t k;
         uint32_t entry_length;
         uint32_t body_length;
@@ -426,6 +427,7 @@ splitter_thread_func(void *arg)
 
         // filter available data to echo and delta forever and ever
         l = 0;
+	offset = 0;
         state = FindingBeginString;
         do {
                 if (!foxtrot_entry_processor_barrier_wait_for_nonblocking(args->foxtrot, &cursor_upper_limit))
@@ -457,19 +459,21 @@ splitter_thread_func(void *arg)
                                         if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
                                                 delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
-                                                delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size);
+                                                delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size +1); // <== +1 DEBUG
+						memset(delta_entry->content.data, '\0', delta_entry->content.size + 1); // <== memset DEBUG
                                                 if (!delta_entry->content.data) {
                                                         M_ALERT("no memory");
                                                         state = FindingBeginString; // skip this message and hope for better memory conditions later
                                                         continue;
                                                 }
                                         }
-                                        state = CopyingBody;
-                                case CopyingBody:
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
                                         memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
+					offset = args->begin_string_length + strlen(length_str);
+                                        state = CopyingBody;
+                                case CopyingBody:
                                         if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
-                                                memcpy(delta_entry->content.data + args->begin_string_length + strlen(length_str), 
+                                                memcpy(delta_entry->content.data + offset, 
                                                        foxtrot_entry->content + sizeof(uint32_t) + k, 
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 msg_type = (char*)delta_entry->content.data + k + 4;
@@ -492,10 +496,11 @@ splitter_thread_func(void *arg)
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;
                                         } else {
-                                                memcpy(delta_entry->content.data + strlen(args->begin_string) + strlen(length_str), 
+                                                memcpy(delta_entry->content.data + offset, 
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 bytes_left_to_copy -= entry_length - k;
+						offset += entry_length - k;
                                                 k = entry_length;
                                         }
                                         break;
@@ -544,15 +549,12 @@ sucker_thread_func(void *arg)
 
         // pull data from source_fd onto foxtrot until told to stop
         while (!get_flag(args->terminate_sucker)) {
-//                M_ALERT("waiting for entry");
                 foxtrot_publisher_port_next_entry_blocking(args->foxtrot, &foxtrot_cursor);
-//                M_ALERT("got entry %d", foxtrot_cursor.sequence);
                 entry_open = 1;
                 foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
                 buf = foxtrot_entry->content + sizeof(uint32_t);
         again:
                 rval = recvfrom(args->source_fd, buf, FOXTROT_MAX_DATA_SIZE, 0, NULL, NULL);
-//                M_ALERT("recieved %d (%s)", rval, (char*)buf);
                 switch (rval) {
                 case 0:
                         M_ERROR("peer closed connection");
@@ -574,9 +576,7 @@ sucker_thread_func(void *arg)
                         setul(foxtrot_entry->content, rval);
                         break;
                 }
-//                M_ALERT("will commit");
                 foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
-//                M_ALERT("has committed");
                 entry_open = 0;
         }
 out:

@@ -191,7 +191,6 @@ private:
         char FIX_start_bytes_[16];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
         int FIX_start_bytes_length_;        // strlen of FIX version field
         int error_;                         // errno from the pusher thread
-        int running_;                       // is the pusher thread running?
         int terminate_;                     // terminate the pusher thread running
         pthread_t pusher_thread_id_;        // the pusher thread ID
 	struct pusher_thread_args_t *args_; // parameters for the pusher thread
@@ -340,7 +339,6 @@ private:
         int source_fd_;
 	char begin_string_[32];                        // 8="FIX ver"<SOH>9="
         int error_;                                    // errno from the sucker thread
-        int running_;                                  // is the sucker thread running?
         int terminate_;                                // terminate the sucker thread running
         pthread_t sucker_thread_id_;                   // the sucker thread ID
 	struct sucker_thread_args_t *sucker_args_;     // parameters for the sucker thread

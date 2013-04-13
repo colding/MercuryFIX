@@ -35,7 +35,8 @@ check_fixio_LDADD = \
 	$(CHECK_LIBS) \
 	$(MERCURY_top_dir)/utillib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la \
-	$(MERCURY_top_dir)/stdlib/process/libprocess.la
+	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
+	$(MERCURY_top_dir)/stdlib/network/libnetwork.la
 
 ##################################
 # What to clean boiler plate code
