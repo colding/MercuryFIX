@@ -380,7 +380,7 @@ splitter_thread_func(void *arg)
 {
         enum FIX_Parse_State state;
         int l;
-	size_t offset;
+        size_t offset;
         uint32_t k;
         uint32_t entry_length;
         uint32_t body_length;
@@ -427,7 +427,7 @@ splitter_thread_func(void *arg)
 
         // filter available data to echo and delta forever and ever
         l = 0;
-	offset = 0;
+        offset = 0;
         state = FindingBeginString;
         do {
                 if (!foxtrot_entry_processor_barrier_wait_for_nonblocking(args->foxtrot, &cursor_upper_limit))
@@ -435,32 +435,45 @@ splitter_thread_func(void *arg)
 
                 for (n.sequence = foxtrot_cursor.sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         foxtrot_entry = foxtrot_ring_buffer_show_entry(args->foxtrot, &n);
-                        
+
                         entry_length = getul(foxtrot_entry->content);
                         for (k = 0; k < entry_length; ++k) {
                                 switch (state) {
                                 case FindingBeginString:
-                                        if (args->begin_string[l] == *(foxtrot_entry->content + sizeof(uint32_t) + k))
+                                        if (args->begin_string[l] == *(foxtrot_entry->content + sizeof(uint32_t) + k)) {
                                                 ++l;
-                                        if (!args->begin_string[l] && isdigit(*(foxtrot_entry->content + sizeof(uint32_t) + k))) {
-                                                l = 0;
-                                                state = FindingBodyLength;
-                                         } else {
                                                 continue;
+                                        } else {
+                                                if (!args->begin_string[l] && isdigit(*(foxtrot_entry->content + sizeof(uint32_t) + k))) {
+                                                        l = 0;
+                                                        state = FindingBodyLength;
+                                                } else {
+                                                        l = 0;
+                                                        continue;
+                                                }
                                         }
                                 case FindingBodyLength:
+                                        if (21 == l) {
+                                                l = 0;
+                                                state = FindingBeginString; // not a valid number, skip this message
+                                                continue;
+                                        }
                                         length_str[l] = *(foxtrot_entry->content + sizeof(uint32_t) + k);
                                         if (args->soh != length_str[l++]) // for 64bit systems this is safe as the largest number of digits is 20
                                                 continue;
                                         length_str[--l] = '\0';
                                         l = 0;
                                         body_length = atoll(length_str);
+                                        if (!body_length || (ERANGE == errno)) {
+                                                state = FindingBeginString; // not a valid number, skip this message
+                                                continue;
+                                        }
                                         bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
                                         if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
                                                 delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
                                                 delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size +1); // <== +1 DEBUG
-						memset(delta_entry->content.data, '\0', delta_entry->content.size + 1); // <== memset DEBUG
+                                                memset(delta_entry->content.data, '\0', delta_entry->content.size + 1); // <== memset DEBUG
                                                 if (!delta_entry->content.data) {
                                                         M_ALERT("no memory");
                                                         state = FindingBeginString; // skip this message and hope for better memory conditions later
@@ -469,12 +482,12 @@ splitter_thread_func(void *arg)
                                         }
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
                                         memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
-					offset = args->begin_string_length + strlen(length_str);
+                                        offset = args->begin_string_length + strlen(length_str);
                                         state = CopyingBody;
                                 case CopyingBody:
                                         if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
-                                                memcpy(delta_entry->content.data + offset, 
-                                                       foxtrot_entry->content + sizeof(uint32_t) + k, 
+                                                memcpy(delta_entry->content.data + offset,
+                                                       foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 msg_type = (char*)delta_entry->content.data + k + 4;
                                                 if (is_session_message(args->soh, msg_type)) {
@@ -496,11 +509,11 @@ splitter_thread_func(void *arg)
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;
                                         } else {
-                                                memcpy(delta_entry->content.data + offset, 
+                                                memcpy(delta_entry->content.data + offset,
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        entry_length - k); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 bytes_left_to_copy -= entry_length - k;
-						offset += entry_length - k;
+                                                offset += entry_length - k;
                                                 k = entry_length;
                                         }
                                         break;
@@ -510,7 +523,7 @@ splitter_thread_func(void *arg)
                         }
                         /* Should we release each entry as we are done
                          * with it or the entire batch in one go...?
-                         * 
+                         *
                          * OK, we need to release each entry as we are
                          * done with it for _very_ long messages which
                          * takes up more than the buffering capacity
@@ -597,7 +610,7 @@ FIX_Popper::FIX_Popper(const char soh)
 {
         source_fd_ = -1;
         memset(begin_string_, '\0', sizeof(begin_string_));
-	sucker_thread_id_ = pthread_self();
+        sucker_thread_id_ = pthread_self();
         error_ = 0;
         delta_ = NULL;
         echo_ = NULL;
@@ -630,7 +643,7 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
         if (-1 == source_fd_) {
                 M_ALERT("no source file descriptor specified");
                 goto err;
-        }               
+        }
 
         if (!delta_) {
                 delta_ = delta_ring_buffer_malloc();
@@ -714,7 +727,7 @@ FIX_Popper::pop(size_t * const len,
                 M_ALERT("could not lock");
                 return 1;
         }
-        
+
         n.sequence = __atomic_fetch_add(&delta_n_.sequence, 1, __ATOMIC_RELEASE);
         if (n.sequence == delta_cursor_upper_limit_.sequence) {
                 delta_entry_processor_barrier_wait_for_blocking(delta_, &delta_cursor_upper_limit_);
@@ -733,16 +746,16 @@ FIX_Popper::pop(size_t * const len,
         return 0;
 }
 
-int 
+int
 FIX_Popper::pop(struct cursor_t * const /*cursor*/,
                 struct count_t * const /*reg_number*/,
-                size_t * const /*len*/, 
+                size_t * const /*len*/,
                 void **/*data*/)
 {
         return 0;
 }
 
-void 
+void
 FIX_Popper::register_popper(struct cursor_t * const /*cursor*/,
                             struct count_t * const /*reg_number*/)
 {
@@ -759,17 +772,17 @@ void
 FIX_Popper::stop(void)
 {
         set_flag(&terminate_, 1);
-	if (!pthread_equal(sucker_thread_id_, pthread_self()))
+        if (!pthread_equal(sucker_thread_id_, pthread_self()))
                 pthread_join(sucker_thread_id_, NULL);
-	sucker_thread_id_ = pthread_self();
+        sucker_thread_id_ = pthread_self();
 }
 
 void
 FIX_Popper::start(void)
 {
         set_flag(&terminate_, 0);
-	if (!pthread_equal(sucker_thread_id_, pthread_self()))
-		return;
+        if (!pthread_equal(sucker_thread_id_, pthread_self()))
+                return;
 
         if (!create_joinable_thread(&sucker_thread_id_, sucker_args_, sucker_thread_func)) {
                 M_ALERT("could not create sucker thread");
