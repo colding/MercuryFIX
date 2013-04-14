@@ -65,12 +65,12 @@ struct splitter_thread_args_t;
  * functions? Hmm, amswer: The disruptors do live forever, but the
  * source/sink socket must be re-initialisable independently from the
  * disruptors themselves.
+ *
+ * Neither class can be copied or assigned.
  */
 
-
 /*
- * No copies or assignments of instances of this class. It doesn't
- * make sense...
+ * Puts partial messages on the sending stack.
  */
 class FIX_Pusher
 {
@@ -210,6 +210,10 @@ private:
 };
 
 
+/*
+ * Pops complate messages from the recieve stack. Takes, by necessity,
+ * care of detecting message gabs and sending ResendRequests.
+ */
 class FIX_Popper
 {
 public:
@@ -349,7 +353,6 @@ private:
         struct cursor_t delta_n_;
         struct cursor_t delta_cursor_upper_limit_;
 	struct count_t delta_reg_number_;
-
 
         echo_io_t *echo_;
         const size_t echo_max_data_length_;

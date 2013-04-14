@@ -27,13 +27,14 @@ A FIX server which:
 DOING
 =====
 
-Currently I'm working with the FIX IO library (utillib/fixio). When
-that is done I'll move on to session management, or that is the plan
-anyways.
+Currently I'm working with the FIX IO library (utillib/fixio). It is
+now almost feature complete. Outstanding issue is that the popper
+class needs to handle detection of messages gabs and the sending of
+ResendRequests.
 
 
-TODO
-==== 
+The big TODOs
+=============
 
 * Cook up some code to let SQLite store and retrieve sent messages and
   the latest recieved/sent sequence number.
