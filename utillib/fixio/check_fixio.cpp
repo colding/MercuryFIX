@@ -162,58 +162,6 @@ const char *noise[16] = {
 };
 
 /*
- * OK, this is butt ugly, but I need a fast solution. The maximum
- * value of a uin64_t (18446744073709551615) has 20 digits. 0 (zero)
- * is returned for larger numbers.
- */
-static inline int
-get_digit_count(const uint64_t num)
-{
-        if (10 > num)
-                return 1;
-        if (100 > num)
-                return 2;
-        if (1000 > num)
-                return 3;
-        if (10000 > num)
-                return 4;
-        if (100000 > num)
-                return 5;
-        if (1000000 > num)
-                return 6;
-        if (10000000 > num)
-                return 7;
-        if (100000000 > num)
-                return 8;
-        if (1000000000 > num)
-                return 9;
-        if (10000000000 > num)
-                return 10;
-        if (100000000000 > num)
-                return 11;
-        if (1000000000000 > num)
-                return 12;
-        if (10000000000000 > num)
-                return 13;
-        if (100000000000000 > num)
-                return 14;
-        if (1000000000000000 > num)
-                return 15;
-        if (10000000000000000 > num)
-                return 16;
-        if (100000000000000000 > num)
-                return 17;
-        if (1000000000000000000 > num)
-                return 18;
-        if (10000000000000000000ULL > num)
-                return 19;
-        if (UINT64_MAX >= num)
-                return 20;
-
-        return 0;
-}
-
-/*
  * msg is a pointer to the first character in a zero terminated FIX
  * messsage
  */
@@ -238,39 +186,39 @@ get_FIX_checksum(const uint8_t *msg, size_t len)
  */
 static inline char*
 make_fix_message(const char * const msg_type,
-		 const char * const fix_version,
-		 const size_t seqnum,
-		 size_t * const length)
+                 const char * const fix_version,
+                 const size_t seqnum,
+                 size_t * const length)
 {
-	const char filler = 'A'; //0xAA;
-	unsigned int checksum;
-	char *pos;
-	int n;
-	char *msg = (char*)malloc(*length + 128);
-	if (!msg) {
-		M_ALERT("no memory");
-		return NULL;
-	}
-	memset(msg, filler, *length + 128); // overshooting a bit, but what the hell...
+        const char filler = 'A'; //0xAA;
+        unsigned int checksum;
+        char *pos;
+        int n;
+        char *msg = (char*)malloc(*length + 128);
+        if (!msg) {
+                M_ALERT("no memory");
+                return NULL;
+        }
+        memset(msg, filler, *length + 128); // overshooting a bit, but what the hell...
 
-	sprintf(msg, "8=%s%c9=%lu%c35=%s%c34=%lu%c", fix_version, DELIM, *length, DELIM, msg_type, DELIM, seqnum, DELIM);
-	*(msg + strlen(msg)) = filler;
+        sprintf(msg, "8=%s%c9=%lu%c35=%s%c34=%lu%c", fix_version, DELIM, *length, DELIM, msg_type, DELIM, seqnum, DELIM);
+        *(msg + strlen(msg)) = filler;
 
-	n = 0;
-	pos = msg;
-	do {
-		if (DELIM == *pos)
-			++n;
-		++pos;
-	} while (n < 2 );
-	*(pos + *length - 1) = DELIM;
-	*(pos + *length + 7) = '\0';
-	checksum = get_FIX_checksum((uint8_t*)msg, strlen(msg) - 7);
-	pos += *length;
-	sprintf(pos, "10=%03u%c", checksum, DELIM);	
-	*length = (size_t)(pos + 3 + 4 - msg);
+        n = 0;
+        pos = msg;
+        do {
+                if (DELIM == *pos)
+                        ++n;
+                ++pos;
+        } while (n < 2 );
+        *(pos + *length - 1) = DELIM;
+        *(pos + *length + 7) = '\0';
+        checksum = get_FIX_checksum((uint8_t*)msg, strlen(msg) - 7);
+        pos += *length;
+        sprintf(pos, "10=%03u%c", checksum, DELIM);
+        *length = (size_t)(pos + 3 + 4 - msg);
 
-	return msg;
+        return msg;
 }
 
 
@@ -324,7 +272,7 @@ START_TEST(test_FIX_send_and_recv_sequentially)
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
-		free(msg);
+                free(msg);
         }
 }
 END_TEST
@@ -351,11 +299,11 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
 
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
-		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[n], strlen(noise[n])), NULL);
+                fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[n], strlen(noise[n])), NULL);
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
-		free(msg);
+                free(msg);
         }
 }
 END_TEST
@@ -387,7 +335,7 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
-		free(msg);
+                free(msg);
         }
 }
 END_TEST
@@ -411,43 +359,43 @@ START_TEST(test_FIX_send_and_recv_eratically)
         pusher->start();
         popper->start();
 
-	// push 0..2
+        // push 0..2
         for (n = 0; n < 3; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
         }
 
-	// pop 0
-	fail_unless(0 == popper->pop(&len, &msg), NULL);
-	fail_unless(len == strlen(complete_messages[0]), NULL);
-	fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
-	free(msg);
+        // pop 0
+        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(len == strlen(complete_messages[0]), NULL);
+        fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
+        free(msg);
 
-	// push 3
-	fail_unless(0 == pusher->push(strlen(partial_messages[3]), partial_messages[3], message_types[3]), NULL);
+        // push 3
+        fail_unless(0 == pusher->push(strlen(partial_messages[3]), partial_messages[3], message_types[3]), NULL);
 
-	// pop 1
-	fail_unless(0 == popper->pop(&len, &msg), NULL);
-	fail_unless(len == strlen(complete_messages[1]), NULL);
-	fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
-	free(msg);
+        // pop 1
+        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(len == strlen(complete_messages[1]), NULL);
+        fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
+        free(msg);
 
-	// pop 2
-	fail_unless(0 == popper->pop(&len, &msg), NULL);
-	fail_unless(len == strlen(complete_messages[2]), NULL);
-	fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
-	free(msg);
+        // pop 2
+        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(len == strlen(complete_messages[2]), NULL);
+        fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
+        free(msg);
 
-	// push 4..15
+        // push 4..15
         for (n = 4; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
         }
 
-	// pop 3..15
+        // pop 3..15
         for (n = 3; n < 16; ++n) {
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
-		free(msg);
+                free(msg);
         }
 }
 END_TEST
@@ -479,16 +427,16 @@ START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
         popper->start();
 
-	send_len = 1024*10;
-	send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
+        send_len = 1024*10;
+        send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
 
-	fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
-	fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
-	fail_unless(send_len == recv_len, NULL);
-	fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
+        fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
+        fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
+        fail_unless(send_len == recv_len, NULL);
+        fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
 
-	free(send_msg);
-	free(recv_msg);
+        free(send_msg);
+        free(recv_msg);
 }
 END_TEST
 
@@ -512,7 +460,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
         size_t recv_len;
         void *send_msg;
         void *recv_msg;
-	char crap[16] = { 'H' };
+        char crap[16] = { 'H' };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         int sockets[2] = { -1, -1 };
 
@@ -520,17 +468,17 @@ START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
         popper->start();
 
-	send_len = 1024*10;
-	send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
+        send_len = 1024*10;
+        send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
 
-	fail_unless(1 == send_all(sockets[0], (const uint8_t*)crap, sizeof(crap)), NULL);
-	fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
-	fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
-	fail_unless(send_len == recv_len, NULL);
-	fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
+        fail_unless(1 == send_all(sockets[0], (const uint8_t*)crap, sizeof(crap)), NULL);
+        fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
+        fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
+        fail_unless(send_len == recv_len, NULL);
+        fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
 
-	free(send_msg);
-	free(recv_msg);
+        free(send_msg);
+        free(recv_msg);
 }
 END_TEST
 
@@ -547,8 +495,8 @@ fixio_suite(void)
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially_with_noise);
         tcase_add_test(tc_core, test_FIX_send_and_recv_in_bursts);
         tcase_add_test(tc_core, test_FIX_send_and_recv_eratically);
-	tcase_add_test(tc_core, test_FIX_challenge_buffer_boundaries_overflow);
-	tcase_add_test(tc_core, test_FIX_challenge_buffer_boundaries_with_crap);
+        tcase_add_test(tc_core, test_FIX_challenge_buffer_boundaries_overflow);
+        tcase_add_test(tc_core, test_FIX_challenge_buffer_boundaries_with_crap);
         suite_add_tcase(s, tc_core);
 
         return s;
@@ -560,7 +508,7 @@ main(int argc, char **argv)
         int number_failed;
         Suite *s = fixio_suite();
         SRunner *sr = srunner_create(s);
-        
+
         // initiate logging
         if (!init_logging(false, "check_fixio")) {
                 fprintf(stderr, "could not initiate logging\n");
@@ -574,4 +522,3 @@ main(int argc, char **argv)
 
         return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-

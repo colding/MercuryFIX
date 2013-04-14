@@ -146,6 +146,7 @@
 #include "stdlib/macros/macros.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
+#include "utillib/fixio/stack_utils.h"
 #include "utillib/fixio/fixio.h"
 
 // takes messages from foxtrot and puts them onto delta and echo as
@@ -167,88 +168,6 @@ struct sucker_thread_args_t {
         int source_fd;
         foxtrot_io_t *foxtrot;
 };
-
-static inline void
-set_flag(int *flag, int val)
-{
-        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
-}
-
-static inline int
-get_flag(int *flag)
-{
-        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
-}
-
-/*
- * msg is a pointer to the first byte in a FIX messsage which is
- * included in the checksum calculation. len is the number of bytes
- * included in the checksum calculation.
- */
-static inline int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
-}
-
-/*
- * OK, this is butt ugly, but I need a fast solution. The maximum
- * value of a uin64_t (18446744073709551615) has 20 digits. 0 (zero)
- * is returned for larger numbers.
- */
-static inline int
-get_digit_count(const uint64_t num)
-{
-        if (10 > num)
-                return 1;
-        if (100 > num)
-                return 2;
-        if (1000 > num)
-                return 3;
-        if (10000 > num)
-                return 4;
-        if (100000 > num)
-                return 5;
-        if (1000000 > num)
-                return 6;
-        if (10000000 > num)
-                return 7;
-        if (100000000 > num)
-                return 8;
-        if (1000000000 > num)
-                return 9;
-        if (10000000000 > num)
-                return 10;
-        if (100000000000 > num)
-                return 11;
-        if (1000000000000 > num)
-                return 12;
-        if (10000000000000 > num)
-                return 13;
-        if (100000000000000 > num)
-                return 14;
-        if (1000000000000000 > num)
-                return 15;
-        if (10000000000000000 > num)
-                return 16;
-        if (100000000000000000 > num)
-                return 17;
-        if (1000000000000000000 > num)
-                return 18;
-        if (10000000000000000000ULL > num)
-                return 19;
-        if (UINT64_MAX >= num)
-                return 20;
-
-        return 0;
-}
 
 /*
  * Content of delta, echo and foxtrotr disruptor entries:
@@ -350,7 +269,8 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_)
 
 /*
  * Returns the sequence number of last recieved message or 0 if the
- * session is new.
+ * session is new. A ResendRequest is send if the number returned is
+ * not 0 (that indicates a reconnect).
  */
 static uint64_t
 get_latest_msg_seq_number_recieved(void)
@@ -359,7 +279,7 @@ get_latest_msg_seq_number_recieved(void)
 }
 
 /*
- * msg_type is terminated with soh, null zero
+ * msg_type is terminated with soh, not zero as normal c-strings
  */
 static inline bool
 is_session_message(const char /*soh*/,
@@ -379,7 +299,7 @@ void*
 splitter_thread_func(void *arg)
 {
         enum FIX_Parse_State state;
-	char chksum[4];
+        char chksum[4];
         int l;
         size_t offset;
         uint32_t k;
@@ -489,25 +409,25 @@ splitter_thread_func(void *arg)
                                                 memcpy(delta_entry->content.data + offset,
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
-						sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
-						if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
-							msg_type = (char*)delta_entry->content.data + k + 4;
-							if (is_session_message(args->soh, msg_type)) {
-								if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
-									M_ALERT("oversized session message");
-								} else {
-									setul(echo_entry->content, delta_entry->content.size);
-									memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
-									echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
-									echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
-									echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-								}
-							} else {
-								delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
-								delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
-								delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-							}
-						}
+                                                sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
+                                                if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
+                                                        msg_type = (char*)delta_entry->content.data + k + 4;
+                                                        if (is_session_message(args->soh, msg_type)) {
+                                                                if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
+                                                                        M_ALERT("oversized session message");
+                                                                } else {
+                                                                        setul(echo_entry->content, delta_entry->content.size);
+                                                                        memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
+                                                                        echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
+                                                                        echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+                                                                        echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+                                                                }
+                                                        } else {
+                                                                delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
+                                                                delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+                                                                delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+                                                        }
+                                                }
                                                 ++msg_seq_number;
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;

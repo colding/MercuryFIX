@@ -8,21 +8,21 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *     (1) Redistributions of source code must retain the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer.
- * 
+ *
  *     (2) Redistributions in binary form must reproduce the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     (3) Neither the name of the copyright holder nor the names of
  *     its contributors may be used to endorse or promote products
  *     derived from this software without specific prior written
  *     permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -37,7 +37,7 @@
  * SUCH DAMAGE.
  */
 
-/* 
+/*
  * 5 different disruptor types are declared for the Pusher and Popper
  * classes.
  *
@@ -146,6 +146,7 @@
 #include "stdlib/macros/macros.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
+#include "utillib/fixio/stack_utils.h"
 #include "utillib/fixio/fixio.h"
 
 /*
@@ -179,36 +180,6 @@ struct pusher_thread_args_t {
         int FIX_start_length;
         char soh;
 };
-
-static inline void
-set_flag(int *flag, int val)
-{
-        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
-}
-
-static inline int
-get_flag(int *flag)
-{
-        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
-}
-
-/*
- * msg is a pointer to the first character in a FIX messsage which is
- * included in the checksum calculation. len is the number of bytes
- * included in the checksum calculation.
- */
-static inline unsigned int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
-}
 
 /*
  * OK, this is butt ugly, but I need a fast solution. The maximum
@@ -730,7 +701,7 @@ FIX_Pusher::FIX_Pusher(const char soh)
 {
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
-	pusher_thread_id_ = pthread_self();
+        pusher_thread_id_ = pthread_self();
         sink_fd_ = -1;
         dev_null_ = -1;
         error_ = 0;
@@ -774,7 +745,7 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
                         goto err;
                 }
         }
-        
+
         if (!alfa_) {
                 alfa_ = alfa_ring_buffer_malloc();
                 if (!alfa_) {
@@ -837,7 +808,7 @@ FIX_Pusher::push(const size_t len,
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
-                
+
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
                 alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor);
@@ -930,16 +901,16 @@ void
 FIX_Pusher::stop(void)
 {
         set_flag(&terminate_, 1);
-	if (!pthread_equal(pusher_thread_id_, pthread_self()))
+        if (!pthread_equal(pusher_thread_id_, pthread_self()))
                 pthread_join(pusher_thread_id_, NULL);
-	pusher_thread_id_ = pthread_self();
+        pusher_thread_id_ = pthread_self();
 }
 
 void
 FIX_Pusher::start(void)
 {
         set_flag(&terminate_, 0);
-	if (!pthread_equal(pusher_thread_id_, pthread_self()))
+        if (!pthread_equal(pusher_thread_id_, pthread_self()))
                  return;
 
         if (!create_joinable_thread(&pusher_thread_id_, args_, pusher_thread_func)) {
@@ -947,4 +918,3 @@ FIX_Pusher::start(void)
                 abort();
         }
 }
-
