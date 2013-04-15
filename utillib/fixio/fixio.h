@@ -279,7 +279,7 @@ public:
          * complete message which must be processed in situ or
          * copied.
 	 *
-	 * len is the total length of the message, not the value of
+	 * *len is the total length of the message, not the value of
 	 * tag 9, BodyLength.
 	 *
 	 * Only one thread must call this method.
@@ -287,8 +287,8 @@ public:
 	 * Return value is zero if all is well, or an errno value if
 	 * not. 
          */
-        int session_pop(const size_t len,
-                        void *data);
+        void session_pop(size_t * const len,
+			 void **data);
 
 	/*
 	 * Stops the popping of message of the source.
@@ -356,6 +356,9 @@ private:
 
         echo_io_t *echo_;
         const size_t echo_max_data_length_;
+        struct cursor_t echo_n_;
+        struct cursor_t echo_cursor_upper_limit_;
+	struct count_t echo_reg_number_;
 
         foxtrot_io_t *foxtrot_;
         const size_t foxtrot_max_data_length_;

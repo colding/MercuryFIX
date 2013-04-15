@@ -576,9 +576,9 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 }
                 delta_ring_buffer_init(delta_);
 
-                // register and setup single entry processor
-                delta_cursor_upper_limit_.sequence = delta_entry_processor_barrier_register(delta_, &delta_reg_number_);
-                delta_n_.sequence = delta_cursor_upper_limit_.sequence;
+                // register and setup single entry processor for pop()
+                delta_n_.sequence = delta_entry_processor_barrier_register(delta_, &delta_reg_number_);
+                delta_cursor_upper_limit_.sequence = delta_n_.sequence;
         }
 
         if (!echo_) {
@@ -588,6 +588,10 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                         goto err;
                 }
                 echo_ring_buffer_init(echo_);
+
+                // register and setup single entry processor for session_pop()
+                echo_n_.sequence = echo_entry_processor_barrier_register(echo_, &echo_reg_number_);
+                echo_cursor_upper_limit_.sequence = echo_n_.sequence;
         }
 
         if (!foxtrot_) {
@@ -643,7 +647,7 @@ int
 FIX_Popper::pop(size_t * const len,
                 void **data)
 {
-        struct delta_entry_t *delta_entry;
+        const struct delta_entry_t *delta_entry;
         struct cursor_t n;
 
         if (guard_.enter()) {
@@ -656,12 +660,10 @@ FIX_Popper::pop(size_t * const len,
                 delta_entry_processor_barrier_wait_for_blocking(delta_, &delta_cursor_upper_limit_);
                 __atomic_fetch_add(&delta_cursor_upper_limit_.sequence, 1, __ATOMIC_RELEASE);
         }
-        delta_entry = delta_ring_buffer_acquire_entry(delta_, &n);
+        delta_entry = delta_ring_buffer_show_entry(delta_, &n);
 
         *len = delta_entry->content.size;
         *data = delta_entry->content.data;
-        delta_entry->content.size = 0;
-        delta_entry->content.data = NULL;
         delta_entry_processor_barrier_release_entry(delta_, &delta_reg_number_, &n);
 
         guard_.leave();
@@ -684,11 +686,25 @@ FIX_Popper::register_popper(struct cursor_t * const /*cursor*/,
 {
 }
 
-int
-FIX_Popper::session_pop(const size_t /*len*/,
-                        void * /*data*/)
+/*
+ * Only called from a single thread, so no need to use atomic builtins
+ */
+void
+FIX_Popper::session_pop(size_t * const len,
+                        void **data)
 {
-        return 0;
+        struct echo_entry_t *echo_entry;
+
+	if (echo_n_.sequence > echo_cursor_upper_limit_.sequence) {
+		echo_entry_processor_barrier_release_entry(echo_, &echo_reg_number_, &echo_cursor_upper_limit_);
+		++echo_cursor_upper_limit_.sequence;
+                echo_entry_processor_barrier_wait_for_blocking(echo_, &echo_cursor_upper_limit_);
+	}
+        echo_entry = echo_ring_buffer_acquire_entry(echo_, &echo_n_);
+	++echo_n_.sequence;
+
+        *len = getul(echo_entry->content);
+        *data = echo_entry->content + sizeof(uint32_t);
 }
 
 void
