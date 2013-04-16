@@ -245,7 +245,7 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(echo_io_t, echo_);
  */
 #define FOXTROT_QUEUE_LENGTH (1024) // MUST be a power of two
 #define FOXTROT_ENTRY_PROCESSORS (1)
-#define FOXTROT_ENTRY_SIZE (1024*4)
+#define FOXTROT_ENTRY_SIZE (1024*4) // if changing, please check the test_FIX_challenge_buffer_boundaries_*
 #define FOXTROT_MAX_DATA_SIZE (FOXTROT_ENTRY_SIZE - sizeof(uint32_t))
 typedef uint8_t foxtrot_t[FOXTROT_ENTRY_SIZE];
 
@@ -380,6 +380,11 @@ splitter_thread_func(void *arg)
                                                 continue;
                                         }
                                         length_str[l] = *(foxtrot_entry->content + sizeof(uint32_t) + k);
+					if (!isdigit(length_str[l]) && (args->soh != length_str[l])) {
+                                                state = FindingBeginString; // not a valid number, skip this message
+						l = 0;
+                                                continue;
+                                        }
                                         if (args->soh != length_str[l++]) // for 64bit systems this is safe as the largest number of digits is 20
                                                 continue;
                                         length_str[--l] = '\0';
