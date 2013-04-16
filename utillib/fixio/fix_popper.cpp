@@ -421,14 +421,15 @@ splitter_thread_func(void *arg)
                                                                         echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
                                                                         echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
                                                                         echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+									++msg_seq_number;
                                                                 }
                                                         } else {
                                                                 delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
                                                                 delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
                                                                 delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+								++msg_seq_number;
                                                         }
                                                 }
-                                                ++msg_seq_number;
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;
                                         } else {
