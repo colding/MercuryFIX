@@ -460,7 +460,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 
 	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[0], strlen(noise[0])), NULL);
 
-	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL);
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL); // <== seen blocking on this line
 	popper->session_pop(&len, &msg);
 	fail_unless(len == strlen(complete_session_messages[1]), NULL);
 	fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
@@ -495,7 +495,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         for (n = 6; n < 12; ++n) {
 		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
                 fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
-		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
+		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL); // <== seen blocking on this line
                 popper->session_pop(&len, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
@@ -768,3 +768,97 @@ main(int argc, char **argv)
 
         return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
+#if 0
+void
+test()
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets);
+        pusher->init("FIX.4.1", sockets[0]);
+        popper->init("FIX.4.1", sockets[1]);
+        pusher->start();
+        popper->start();
+
+	pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]);
+	popper->pop(&len, &msg);
+	strlen(complete_messages[0]);
+	memcmp(complete_messages[0], msg, len);
+	free(msg);
+
+	send_all(sockets[0], (const uint8_t*)noise[0], strlen(noise[0]));
+
+	pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]);
+	popper->session_pop(&len, &msg);
+	strlen(complete_session_messages[1]);
+	memcmp(complete_session_messages[1], msg, len);
+
+	send_all(sockets[0], (const uint8_t*)noise[1], strlen(noise[1]));
+	send_all(sockets[0], (const uint8_t*)noise[2], strlen(noise[2]));
+
+	pusher->push(strlen(partial_messages[2]), partial_messages[2], message_types[2]);
+	send_all(sockets[0], (const uint8_t*)noise[3], strlen(noise[3]));
+	popper->pop(&len, &msg);
+	strlen(complete_messages[2]);
+	memcmp(complete_messages[2], msg, len);
+	free(msg);
+
+	pusher->session_push(strlen(partial_session_messages[3]), partial_session_messages[3], session_message_types[3]);
+	popper->session_pop(&len, &msg);
+	strlen(complete_session_messages[3]);
+	memcmp(complete_session_messages[3], msg, len);
+
+	pusher->push(strlen(partial_messages[4]), partial_messages[4], message_types[4]);
+	send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12]));
+	popper->pop(&len, &msg);
+	strlen(complete_messages[4]);
+	memcmp(complete_messages[4], msg, len);
+	free(msg);
+
+	pusher->session_push(strlen(partial_session_messages[5]), partial_session_messages[5], session_message_types[5]);
+	popper->session_pop(&len, &msg);
+	strlen(complete_session_messages[5]);
+	memcmp(complete_session_messages[5], msg, len);
+
+        for (n = 6; n < 12; ++n) {
+		send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12]));
+                pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]);
+		send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12]));
+                popper->session_pop(&len, &msg);
+                strlen(complete_session_messages[n]);
+                memcmp(complete_session_messages[n], msg, len);
+        }
+
+        for (n = 12; n < 16; ++n) {
+                pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]);
+                popper->pop(&len, &msg);
+                strlen(complete_messages[n]);
+                memcmp(complete_messages[n], msg, len);
+                free(msg);
+        }
+
+        pusher->stop();
+}
+
+int
+main(int argc, char **argv)
+{
+	printf("pid = %d\n", getpid());
+
+        // initiate logging
+        if (!init_logging(false, "check_fixio")) {
+                fprintf(stderr, "could not initiate logging\n");
+                return EXIT_FAILURE;
+        }
+
+	test();
+
+        return EXIT_SUCCESS;
+}
+#endif
