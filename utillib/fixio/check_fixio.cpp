@@ -431,6 +431,11 @@ END_TEST
 
 /*
  * Test send and recieve of a mix of session and non-session messages
+ * intermingled with noise.
+ *
+ * NOTE: On rare occasions this function hangs in one of the
+ * send_all() or push() methods. Must investigate. It is interesting
+ * to note that the other test functions in the suite never hangs...
  */
 START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 {
