@@ -163,7 +163,6 @@ struct splitter_thread_args_t {
 // takes incomming data from source_fd_ and puts it onto foxtrot
 struct sucker_thread_args_t {
         int *terminate_sucker;
-        int *sucker_running;
         int *error;
         int source_fd;
         foxtrot_io_t *foxtrot;
@@ -281,11 +280,15 @@ get_latest_msg_seq_number_recieved(void)
 /*
  * msg_type is terminated with soh, not zero as normal c-strings
  */
-static inline bool
+static inline int
 is_session_message(const char /*soh*/,
-                   const char * const /*msg_type*/)
+                   const uint8_t * const msg_type)
 {
-        return false;
+	if ((uint8_t)'0' == *msg_type) {
+		return 1;
+	}
+
+        return 0;
 }
 
 enum FIX_Parse_State
@@ -307,7 +310,7 @@ splitter_thread_func(void *arg)
         uint32_t body_length;
         uint32_t bytes_left_to_copy = 0;
         char length_str[32] = { '\0' };
-        const char *msg_type;
+        const uint8_t *msg_type;
         uint64_t msg_seq_number;
         struct cursor_t n;
 
@@ -404,7 +407,9 @@ splitter_thread_func(void *arg)
                                                         state = FindingBeginString; // skip this message and hope for better memory conditions later
                                                         continue;
                                                 }
-                                        }
+                                        } else {
+                                                delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
+					}
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
                                         memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
                                         offset = args->begin_string_length + strlen(length_str);
@@ -416,7 +421,7 @@ splitter_thread_func(void *arg)
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
                                                 if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
-                                                        msg_type = (char*)delta_entry->content.data + k + 4;
+                                                        msg_type = delta_entry->content.data + k + 4;
                                                         if (is_session_message(args->soh, msg_type)) {
                                                                 if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
                                                                         M_ALERT("oversized session message");
@@ -485,7 +490,7 @@ sucker_thread_func(void *arg)
 
         struct sucker_thread_args_t *args = (struct sucker_thread_args_t*)arg;
         if (!args) {
-                M_ERROR("pusher thread cannot run");
+                M_ERROR("sucker thread cannot run");
                 abort();
         }
 
@@ -526,7 +531,6 @@ out:
                 setul(foxtrot_entry->content, 0);
                 foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
         }
-        set_flag(args->sucker_running, 0);
 
         return NULL;
 }
@@ -700,14 +704,17 @@ FIX_Popper::session_pop(size_t * const len,
                         void **data)
 {
         struct echo_entry_t *echo_entry;
+        struct cursor_t n;
 
-	if (echo_n_.sequence > echo_cursor_upper_limit_.sequence) {
-		echo_entry_processor_barrier_release_entry(echo_, &echo_reg_number_, &echo_cursor_upper_limit_);
-		++echo_cursor_upper_limit_.sequence;
+        n.sequence = echo_n_.sequence - 1;
+        echo_entry_processor_barrier_release_entry(echo_, &echo_reg_number_, &n);
+
+        n.sequence = echo_n_.sequence++;
+        if (n.sequence == echo_cursor_upper_limit_.sequence) {
                 echo_entry_processor_barrier_wait_for_blocking(echo_, &echo_cursor_upper_limit_);
-	}
-        echo_entry = echo_ring_buffer_acquire_entry(echo_, &echo_n_);
-	++echo_n_.sequence;
+                ++echo_cursor_upper_limit_.sequence;
+        }
+        echo_entry = echo_ring_buffer_acquire_entry(echo_, &n);
 
         *len = getul(echo_entry->content);
         *data = echo_entry->content + sizeof(uint32_t);
@@ -716,6 +723,10 @@ FIX_Popper::session_pop(size_t * const len,
 void
 FIX_Popper::stop(void)
 {
+	/*
+	 * disabled - needs a non-blocking next_entry before this can be activated again
+	 */
+	return;
         set_flag(&terminate_, 1);
         if (!pthread_equal(sucker_thread_id_, pthread_self()))
                 pthread_join(sucker_thread_id_, NULL);

@@ -170,7 +170,6 @@
 struct pusher_thread_args_t {
         bool flushing;
         int *terminate;
-        int *running;
         int *error;
         int sink_fd;
         alfa_io_t *alfa;
@@ -587,7 +586,6 @@ push_charlie(const bool /* flushing */,
                 total = 0;
                 for (n.sequence = charlie_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         charlie_entry = charlie_ring_buffer_acquire_entry(args->charlie, &n);
-
                         vdata[idx].iov_len = getul(charlie_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, charlie_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
@@ -642,7 +640,7 @@ pusher_thread_func(void *arg)
         if (!vdata) {
                 M_ALERT("no memory");
                 set_flag(args->error, ENOMEM);
-                set_flag(args->running, 0);
+		set_flag(args->terminate, 1);
                 return NULL;
         }
 
@@ -689,7 +687,7 @@ out:
         bravo_entry_processor_barrier_unregister(args->bravo, &bravo_reg_number);
         charlie_entry_processor_barrier_unregister(args->charlie, &charlie_reg_number);
 
-        set_flag(args->running, 0);
+        set_flag(args->terminate, 1);
 
         return NULL;
 }

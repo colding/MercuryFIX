@@ -74,28 +74,6 @@
 #define DELIM '|'
 
 /*
- * Valid partial messages for push class
- */
-const char *partial_messages[16] = {
-        "|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=",
-        "|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=",
-        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=",
-        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=",
-        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=",
-        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=",
-        "|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=",
-        "|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=",
-        "|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=",
-        "|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
-        "|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
-        "|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=",
-        "|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=",
-        "|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=",
-        "|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
-        "|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
-};
-
-/*
  * Valid complete messages
  */
 const char *complete_messages[16] = {
@@ -118,6 +96,28 @@ const char *complete_messages[16] = {
 };
 
 /*
+ * Valid partial messages for push class
+ */
+const char *partial_messages[16] = {
+        "|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=",
+        "|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=",
+        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=",
+        "|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=",
+        "|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
+        "|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
+        "|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=",
+        "|49=BANZAI|52=20121105-23:24:55|56=EXEC|11=1352157895032|21=1|38=10000|40=1|54=1|55=ORCL|59=0|10=",
+        "|49=BANZAI|52=20121105-23:25:12|56=EXEC|11=1352157912357|21=1|38=10000|40=2|44=10|54=1|55=SPY|59=0|10=",
+        "|49=BANZAI|52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|52=20121105-23:25:25|56=EXEC|11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
+};
+
+/*
  * Valid message types
  */
 const char *message_types[16] = {
@@ -137,6 +137,60 @@ const char *message_types[16] = {
         "D",
         "BA",
         "BA",
+};
+
+/*
+ * Valid complete session messages
+ */
+const char *complete_session_messages[12] = {
+        "8=FIX.4.1|9=61|35=0|34=1|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=069|",
+        "8=FIX.4.1|9=49|35=0|34=2|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=065|",
+        "8=FIX.4.1|9=139|35=0|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=074|",
+        "8=FIX.4.1|9=153|35=0|34=4|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=245|",
+        "8=FIX.4.1|9=139|35=0|34=5|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=064|",
+        "8=FIX.4.1|9=153|35=0|34=6|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=235|",
+        "8=FIX.4.1|9=138|35=0|34=7|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=011|",
+        "8=FIX.4.1|9=82|35=0|34=8|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=080|",
+        "8=FIX.4.1|9=82|35=0|34=9|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=082|",
+        "8=FIX.4.1|9=62|35=0|34=10|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=118|",
+        "8=FIX.4.1|9=50|35=0|34=11|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=105|",
+        "8=FIX.4.1|9=104|35=0|34=12|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=021|",
+};
+
+/*
+ * Valid complete session messages
+ */
+const char *partial_session_messages[12] = {
+        "|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=",
+        "|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=",
+        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=",
+        "|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=",
+        "|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=",
+        "|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=",
+        "|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=",
+        "|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=",
+};
+
+/*
+ * Valid session message types
+ */
+const char *session_message_types[12] = {
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
 };
 
 /*
@@ -260,7 +314,6 @@ START_TEST(test_FIX_send_and_recv_sequentially)
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
 
-
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
@@ -274,8 +327,188 @@ START_TEST(test_FIX_send_and_recv_sequentially)
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
         }
+        pusher->stop();
 }
 END_TEST
+
+/*
+ * Test send and recieve of test messages sequentially
+ */
+START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
+        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start();
+        popper->start();
+
+        for (n = 0; n < 12; ++n) {
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+                popper->session_pop(&len, &msg);
+                fail_unless(len == strlen(complete_session_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
+        }
+        pusher->start();
+}
+END_TEST
+
+/*
+ * Test send and recieve of a mix of session and non-session messages
+ */
+START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
+        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start();
+        popper->start();
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[0]), NULL);
+	fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
+	free(msg);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[1]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[2]), partial_messages[2], message_types[2]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[2]), NULL);
+	fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
+	free(msg);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), partial_session_messages[3], session_message_types[3]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[3]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[4]), partial_messages[4], message_types[4]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[4]), NULL);
+	fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
+	free(msg);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), partial_session_messages[5], session_message_types[5]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[5]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
+
+        for (n = 6; n < 12; ++n) {
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+                popper->session_pop(&len, &msg);
+                fail_unless(len == strlen(complete_session_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
+        }
+
+        for (n = 12; n < 16; ++n) {
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(len == strlen(complete_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+                free(msg);
+        }
+
+        pusher->stop();
+}
+END_TEST
+
+/*
+ * Test send and recieve of a mix of session and non-session messages
+ */
+START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
+        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start();
+        popper->start();
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[0]), NULL);
+	fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
+	free(msg);
+
+	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[0], strlen(noise[0])), NULL);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[1]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
+
+	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[1], strlen(noise[1])), NULL);
+	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[2], strlen(noise[2])), NULL);
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[2]), partial_messages[2], message_types[2]), NULL);
+	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[3], strlen(noise[3])), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[2]), NULL);
+	fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
+	free(msg);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), partial_session_messages[3], session_message_types[3]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[3]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[4]), partial_messages[4], message_types[4]), NULL);
+	fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	fail_unless(len == strlen(complete_messages[4]), NULL);
+	fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
+	free(msg);
+
+	fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), partial_session_messages[5], session_message_types[5]), NULL);
+	popper->session_pop(&len, &msg);
+	fail_unless(len == strlen(complete_session_messages[5]), NULL);
+	fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
+
+        for (n = 6; n < 12; ++n) {
+		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+		fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
+                popper->session_pop(&len, &msg);
+                fail_unless(len == strlen(complete_session_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
+        }
+
+        for (n = 12; n < 16; ++n) {
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(len == strlen(complete_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+                free(msg);
+        }
+
+        pusher->stop();
+}
+END_TEST
+
+
 
 /*
  * Test send and recieve of test messages sequentially with noise in
@@ -492,6 +725,9 @@ fixio_suite(void)
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially);
+        tcase_add_test(tc_core, test_FIX_send_and_recv_session_messages_sequentially);
+	tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages);
+	tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages_with_noise);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially_with_noise);
         tcase_add_test(tc_core, test_FIX_send_and_recv_in_bursts);
         tcase_add_test(tc_core, test_FIX_send_and_recv_eratically);
@@ -510,8 +746,8 @@ main(int argc, char **argv)
         SRunner *sr = srunner_create(s);
 
 	int n;
-	for (n = 0; n < 16; ++n) {
-		printf("checksum of %s is %03u\n", complete_messages[n], get_FIX_checksum((const uint8_t*)complete_messages[n], strlen(complete_messages[n]) - 7));
+	for (n = 0; n < 12; ++n) {
+		printf("checksum of %s is %03u\n", complete_session_messages[n], get_FIX_checksum((const uint8_t*)complete_session_messages[n], strlen(complete_session_messages[n]) - 7));
 	}
 
         // initiate logging
