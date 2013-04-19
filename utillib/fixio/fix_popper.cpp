@@ -284,9 +284,9 @@ static inline int
 is_session_message(const char /*soh*/,
                    const uint8_t * const msg_type)
 {
-	if ((uint8_t)'0' == *msg_type) {
-		return 1;
-	}
+        if ((uint8_t)'0' == *msg_type) {
+                return 1;
+        }
 
         return 0;
 }
@@ -372,6 +372,10 @@ splitter_thread_func(void *arg)
                                                         l = 0;
                                                         state = FindingBodyLength;
                                                 } else {
+                                                        if (args->begin_string[0] == *(foxtrot_entry->content + sizeof(uint32_t) + k)) {
+                                                                l = 1;
+                                                                continue;
+                                                        }
                                                         l = 0;
                                                         continue;
                                                 }
@@ -383,9 +387,9 @@ splitter_thread_func(void *arg)
                                                 continue;
                                         }
                                         length_str[l] = *(foxtrot_entry->content + sizeof(uint32_t) + k);
-					if (!isdigit(length_str[l]) && (args->soh != length_str[l])) {
+                                        if (!isdigit(length_str[l]) && (args->soh != length_str[l])) {
                                                 state = FindingBeginString; // not a valid number, skip this message
-						l = 0;
+                                                l = 0;
                                                 continue;
                                         }
                                         if (args->soh != length_str[l++]) // for 64bit systems this is safe as the largest number of digits is 20
@@ -409,7 +413,7 @@ splitter_thread_func(void *arg)
                                                 }
                                         } else {
                                                 delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
-					}
+                                        }
                                         memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
                                         memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
                                         offset = args->begin_string_length + strlen(length_str);
@@ -421,7 +425,7 @@ splitter_thread_func(void *arg)
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
                                                 if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
-                                                        msg_type = delta_entry->content.data + k + 4;
+                                                        msg_type = delta_entry->content.data + args->begin_string_length + strlen(length_str) + 4;
                                                         if (is_session_message(args->soh, msg_type)) {
                                                                 if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
                                                                         M_ALERT("oversized session message");
@@ -431,13 +435,13 @@ splitter_thread_func(void *arg)
                                                                         echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
                                                                         echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
                                                                         echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-									++msg_seq_number;
+                                                                        ++msg_seq_number;
                                                                 }
                                                         } else {
                                                                 delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
                                                                 delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
                                                                 delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-								++msg_seq_number;
+                                                                ++msg_seq_number;
                                                         }
                                                 }
                                                 state = FindingBeginString;
@@ -723,10 +727,10 @@ FIX_Popper::session_pop(size_t * const len,
 void
 FIX_Popper::stop(void)
 {
-	/*
-	 * disabled - needs a non-blocking next_entry before this can be activated again
-	 */
-	return;
+        /*
+         * disabled - needs a non-blocking next_entry before this can be activated again
+         */
+        return;
         set_flag(&terminate_, 1);
         if (!pthread_equal(sucker_thread_id_, pthread_self()))
                 pthread_join(sucker_thread_id_, NULL);
