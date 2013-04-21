@@ -321,6 +321,36 @@ START_TEST(test_FIX_Popper_create)
 END_TEST
 
 /*
+ * Lame test of flush()
+ */
+START_TEST(test_FIX_pusher_flush)
+{
+        int n;
+        size_t len;
+        void *msg;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
+        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start();
+        popper->start();
+
+	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	pusher->flush();
+	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+	fail_unless(0 == popper->pop(&len, &msg), NULL);
+	pusher->flush();
+
+        pusher->stop();
+        popper->stop();
+}
+END_TEST
+
+/*
  * Test send and recieve of test messages sequentially
  */
 START_TEST(test_FIX_send_and_recv_sequentially)
@@ -796,6 +826,7 @@ fixio_suite(void)
         TCase *tc_core = tcase_create("Core");
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);
+	tcase_add_test(tc_core, test_FIX_pusher_flush);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_messages_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages);
