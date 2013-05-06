@@ -46,9 +46,10 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
-#include "utillib/fixio/fixio.h"
 #include "stdlib/log/log.h"
 #include "stdlib/network/network.h"
+#include "fixio.h"
+#include "db_utils.h"
 
 /*
  * Valid FIX sample messages with the real SOH:
@@ -78,7 +79,6 @@
  */
 const char *complete_messages[16] = {
         "8=FIX.4.1|9=61|35=8|34=1|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=077|",
-
         "8=FIX.4.1|9=54|35=FOOBAR|34=2|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=198|",
         "8=FIX.4.1|9=139|35=8|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=082|",
         "8=FIX.4.1|9=153|35=8|34=4|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=253|",
@@ -160,19 +160,28 @@ const char *complete_session_messages[12] = {
 
 #define LONG_NOISE "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSADDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSASSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSAAADSADDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
 
-const char *complete_session_messages_with_noise[12] = {
+const char *complete_session_messages_with_noise[9] = {
         "8=FIX.4.1|9=61|35=0|34=1|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=089|", /* error in checksum */
-        LONG_NOISE "jkfcdkjfirr8348=FIX.4.1|9=49|35=0|34=2|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=065|cefc",
-        "88=FIX.4.1|9=13j8=FIX.4.1|9=139|35=0|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=074||||édw",
-        "8=FIX.4.1|9=153|35=0|34=4|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=245|" LONG_NOISE,
-        "88=FIX.4.1|9=139|35=0|34=5|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=064|dsejhdue6746e37d3",
-        "jkjsw|iikj2873""#€%&/8=FIX.4.1|9=153|35=0|34=6|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=235|dnejhfcnruy7634763d",
-        "skxm39ue3765764rdjkednj#88=FIX.4.1|9=138|35=0|34=7|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=011|dejdfhejhdia7e",
-        "cdcddmke887328378jedfnchdgsjhckjeldcjehrbdnckbdhxbcjkdbcjhbdncjdbcbdnbckjdsncjkdncjbjhdgyewhdiu8=FIX.4.1|9=82|35=0|34=8|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=080|4dmier7884rdnj4rfy74",
-        "dedjioejid838eu3dijd87e6djdjhuehrdg46tredhkl3kfuiowhfuiwhoiufyhjn8=FIX.4.1|9=82|35=0|34=9|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=082|smwi747jdn4j",
-        "8=(=(=8=FIX.4.1|9=62|35=0|34=10|49=BANZAI|52=20121105-23:24:06|56=EXEC|98=0|108=30|10=118|swswws",
-        "08=FIX.4.1|9=50|35=0|34=11|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=105|cwf4",
-        "11118=FIX.4.1|9=104|35=0|34=12|49=BANZAI|52=20121105-23:24:42|56=EXEC|11=1352157882577|21=1|38=10000|40=1|54=1|55=MSFT|59=0|10=021|dfewfc44rfrcd",
+        LONG_NOISE "jkfcdkjfirr8348=FIX.4.1|9=49|35=0|34=1|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=064|cefc",
+        "88=FIX.4.1|9=13j8=FIX.4.1|9=139|35=0|34=2|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=073||||édw",
+        "8=FIX.4.1|9=153|35=0|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=244|" LONG_NOISE,
+        "88=FIX.4.1|9=139|35=0|34=4|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=063|dsejhdue6746e37d3",
+        "jkjsw|iikj2873""#€%&/8=FIX.4.1|9=153|35=0|34=5|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=234|dnejhfcnruy7634763d",
+        "skxm39ue3765764rdjkednj#88=FIX.4.1|9=138|35=0|34=6|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=010|dejdfhejhdia7e",
+        "cdcddmke887328378jedfnchdgsjhckjeldcjehrbdnckbdhxbcjkdbcjhbdncjdbcbdnbckjdsncjkdncjbjhdgyewhdiu8=FIX.4.1|9=82|35=0|34=7|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=079|4dmier7884rdnj4rfy74",
+        "dedjioejid838eu3dijd87e6djdjhuehrdg46tredhkl3kfuiowhfuiwhoiufyhjn8=FIX.4.1|9=82|35=0|34=8|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=081|smwi747jdn4j",
+};
+
+const char *complete_session_messages_with_noise_cleaned[9] = {
+        "8=FIX.4.1|9=61|35=0|34=1|49=EXEC|52=20121105-23:24:06|56=BANZAI|98=0|108=30|10=089|", /* error in checksum */
+        "8=FIX.4.1|9=49|35=0|34=1|49=EXEC|52=20121105-23:24:37|56=BANZAI|10=064|",
+        "8=FIX.4.1|9=139|35=0|34=2|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=0|11=1352157882577|14=0|17=1|20=0|31=0|32=0|37=1|38=10000|39=0|54=1|55=MSFT|150=2|151=0|10=073|",
+        "8=FIX.4.1|9=153|35=0|34=3|49=EXEC|52=20121105-23:24:42|56=BANZAI|6=12.3|11=1352157882577|14=10000|17=2|20=0|31=12.3|32=10000|37=2|38=10000|39=2|54=1|55=MSFT|150=2|151=0|10=244|",
+        "8=FIX.4.1|9=139|35=0|34=4|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=0|11=1352157895032|14=0|17=3|20=0|31=0|32=0|37=3|38=10000|39=0|54=1|55=ORCL|150=2|151=0|10=063|",
+        "8=FIX.4.1|9=153|35=0|34=5|49=EXEC|52=20121105-23:24:55|56=BANZAI|6=12.3|11=1352157895032|14=10000|17=4|20=0|31=12.3|32=10000|37=4|38=10000|39=2|54=1|55=ORCL|150=2|151=0|10=234|",
+        "8=FIX.4.1|9=138|35=0|34=6|49=EXEC|52=20121105-23:25:12|56=BANZAI|6=0|11=1352157912357|14=0|17=5|20=0|31=0|32=0|37=5|38=10000|39=0|54=1|55=SPY|150=2|151=0|10=010|",
+        "8=FIX.4.1|9=82|35=0|34=7|49=EXEC|52=20121105-23:25:16|56=BANZAI|45=6|58=Unsupported message type|10=079|",
+        "8=FIX.4.1|9=82|35=0|34=8|49=EXEC|52=20121105-23:25:25|56=BANZAI|45=7|58=Unsupported message type|10=081|",
 };
 
 /*
@@ -256,13 +265,13 @@ get_FIX_checksum(const uint8_t *msg, size_t len)
  *
  * length - body length upon input, total length upon return.
  */
-static inline char*
+static inline uint8_t*
 make_fix_message(const char * const msg_type,
                  const char * const fix_version,
                  const size_t seqnum,
                  size_t * const length)
 {
-        const char filler = 'A'; //0xAA;
+        const char filler = 'A';
         unsigned int checksum;
         char *pos;
         int n;
@@ -290,7 +299,7 @@ make_fix_message(const char * const msg_type,
         sprintf(pos, "10=%03u%c", checksum, DELIM);
         *length = (size_t)(pos + 3 + 4 - msg);
 
-        return msg;
+        return (uint8_t*)msg;
 }
 
 
@@ -320,33 +329,98 @@ START_TEST(test_FIX_Popper_create)
 }
 END_TEST
 
+
 /*
- * Lame test of flush()
+ * Test initalization of FIX_Popper class
  */
-START_TEST(test_FIX_pusher_flush)
+START_TEST(test_message_database)
 {
+        MsgDB db;
+        uint64_t num = 0xDEADBEEF;
+        const char * const db_path = "23E19F70-616C-4551-BB0E-2EF61EFB9474.db";
+
+        remove(db_path);
+        fail_unless(1 == db.set_db_path(db_path));
+        fail_unless(1 == db.open());
+
+        fail_unless(1 == db.get_latest_recv_seqnum(num));
+        fail_unless(0 == num);
+        num = 0xDEADBEEF;
+
+        fail_unless(1 == db.get_latest_sent_seqnum(num));
+        fail_unless(0 == num);
+        num = 0xDEADBEEF;
+
+        fail_unless(1 == db.store_sent_msg(12, strlen(noise[3]), (const uint8_t*)noise[3], "A"));
+        fail_unless(1 == db.get_latest_sent_seqnum(num));
+        fail_unless(12 == num);
+        num = 0xDEADBEEF;
+
+        fail_unless(1 == db.store_recv_msg(234, strlen(complete_messages[7]), (const uint8_t*)complete_messages[7]));
+        fail_unless(1 == db.get_latest_recv_seqnum(num));
+        fail_unless(234 == num);
+        num = 0xDEADBEEF;
+
+        fail_unless(1 == db.close());
+        remove(db_path);
+}
+END_TEST
+
+/*
+ * Test start and stop. The pusher and they popper must be able to
+ * stop and start again without loosing any messages.
+ */
+START_TEST(test_FIX_start_stop)
+{
+        const char * const sent_db = "23E19F70-616C-4551-BB0E-2EF61EFB9474.sent";
+        const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
+
         int n;
+        int m;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
 
+        remove(sent_db);
+        remove(recv_db);
+
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(sent_db);
+        popper->start(recv_db);
 
-	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
-	fail_unless(0 == popper->pop(&len, &msg), NULL);
-	pusher->flush();
-	fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
-	fail_unless(0 == popper->pop(&len, &msg), NULL);
-	pusher->flush();
+        fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
+        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(len == strlen(complete_messages[0]), NULL);
+        fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
+        free(msg);
+
+        fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
+        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(len == strlen(complete_messages[1]), NULL);
+        fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
+
+        pusher->stop();
+        pusher->start(sent_db);
+        popper->stop();
+        popper->start(recv_db);
+
+        for (n = 2; n < 16; ++n) {
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(len == strlen(complete_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+                free(msg);
+        }
 
         pusher->stop();
         popper->stop();
+
+        remove(sent_db);
+        remove(recv_db);
 }
 END_TEST
 
@@ -357,7 +431,7 @@ START_TEST(test_FIX_send_and_recv_sequentially)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -365,11 +439,11 @@ START_TEST(test_FIX_send_and_recv_sequentially)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
@@ -388,7 +462,7 @@ START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -396,11 +470,11 @@ START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
         for (n = 0; n < 12; ++n) {
-                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
                 popper->session_pop(&len, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
@@ -418,7 +492,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -426,51 +500,51 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL);
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), (const uint8_t *)partial_session_messages[1], session_message_types[1]), NULL);
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[2]), partial_messages[2], message_types[2]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[2]), (const uint8_t *)partial_messages[2], message_types[2]), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[2]), NULL);
         fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
         free(msg);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), partial_session_messages[3], session_message_types[3]), NULL);
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), (const uint8_t *)partial_session_messages[3], session_message_types[3]), NULL);
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[3]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[4]), partial_messages[4], message_types[4]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[4]), (const uint8_t *)partial_messages[4], message_types[4]), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[4]), NULL);
         fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
         free(msg);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), partial_session_messages[5], session_message_types[5]), NULL);
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), (const uint8_t *)partial_session_messages[5], session_message_types[5]), NULL);
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[5]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
 
         for (n = 6; n < 12; ++n) {
-                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
                 popper->session_pop(&len, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
         }
 
         for (n = 12; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
@@ -494,7 +568,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -502,10 +576,10 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[0]), partial_messages[0], message_types[0]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
@@ -513,7 +587,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[0], strlen(noise[0])), NULL);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), partial_session_messages[1], session_message_types[1]), NULL); // <== seen blocking on this line
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), (const uint8_t *)partial_session_messages[1], session_message_types[1]), NULL); // <== seen blocking on this line
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
@@ -521,33 +595,33 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[1], strlen(noise[1])), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[2], strlen(noise[2])), NULL);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[2]), partial_messages[2], message_types[2]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[2]), (const uint8_t *)partial_messages[2], message_types[2]), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[3], strlen(noise[3])), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[2]), NULL);
         fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
         free(msg);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), partial_session_messages[3], session_message_types[3]), NULL);
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), (const uint8_t *)partial_session_messages[3], session_message_types[3]), NULL);
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[3]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[4]), partial_messages[4], message_types[4]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[4]), (const uint8_t *)partial_messages[4], message_types[4]), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
         fail_unless(0 == popper->pop(&len, &msg), NULL);
         fail_unless(len == strlen(complete_messages[4]), NULL);
         fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
         free(msg);
 
-        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), partial_session_messages[5], session_message_types[5]), NULL);
+        fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), (const uint8_t *)partial_session_messages[5], session_message_types[5]), NULL);
         popper->session_pop(&len, &msg);
         fail_unless(len == strlen(complete_session_messages[5]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
 
         for (n = 6; n < 12; ++n) {
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
-                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), partial_session_messages[n], session_message_types[n]), NULL);
+                fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL); // <== seen blocking on this line
                 popper->session_pop(&len, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
@@ -555,7 +629,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         }
 
         for (n = 12; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
@@ -575,7 +649,7 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -584,11 +658,11 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[n], strlen(noise[n])), NULL);
                 fail_unless(0 == popper->pop(&len, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
@@ -608,7 +682,7 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -617,11 +691,11 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
         }
 
         for (n = 0; n < 16; ++n) {
@@ -643,7 +717,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -652,12 +726,12 @@ START_TEST(test_FIX_send_and_recv_eratically)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
         // push 0..2
         for (n = 0; n < 3; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
         }
 
         // pop 0
@@ -667,7 +741,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
         free(msg);
 
         // push 3
-        fail_unless(0 == pusher->push(strlen(partial_messages[3]), partial_messages[3], message_types[3]), NULL);
+        fail_unless(0 == pusher->push(strlen(partial_messages[3]), (const uint8_t *)partial_messages[3], message_types[3]), NULL);
 
         // pop 1
         fail_unless(0 == popper->pop(&len, &msg), NULL);
@@ -683,7 +757,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
 
         // push 4..15
         for (n = 4; n < 16; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
         }
 
         // pop 3..15
@@ -717,14 +791,14 @@ START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
         int n;
         size_t send_len;
         size_t recv_len;
-        void *send_msg;
-        void *recv_msg;
+        uint8_t *send_msg;
+        uint8_t *recv_msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        popper->start();
+        popper->start(":memory:");
 
         send_len = 1024*10;
         send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
@@ -759,15 +833,15 @@ START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
         int n;
         size_t send_len;
         size_t recv_len;
-        void *send_msg;
-        void *recv_msg;
+        uint8_t *send_msg;
+        uint8_t *recv_msg;
         char crap[16] = { 'H' };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        popper->start();
+        popper->start(":memory:");
 
         send_len = 1024*10;
         send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
@@ -792,7 +866,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
 {
         int n;
         size_t len;
-        void *msg;
+        uint8_t*msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -800,16 +874,16 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
         fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start();
-        popper->start();
+        pusher->start(":memory:");
+        popper->start(":memory:");
 
-	// first the message with the checksum error which should be (silently?) ignored
-	fail_unless(1 == send_all(sockets[0], (const uint8_t*)complete_session_messages_with_noise[0], strlen(complete_session_messages_with_noise[0])), NULL);
-        for (n = 1; n < 12; ++n) {
+        // first the message with the checksum error which should be (silently?) ignored
+        fail_unless(1 == send_all(sockets[0], (const uint8_t*)complete_session_messages_with_noise[0], strlen(complete_session_messages_with_noise[0])), NULL);
+        for (n = 1; n < 9; ++n) {
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)complete_session_messages_with_noise[n], strlen(complete_session_messages_with_noise[n])), NULL);
                 popper->session_pop(&len, &msg);
-                fail_unless(len == strlen(complete_session_messages[n]), NULL);
-                fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
+                fail_unless(len == strlen(complete_session_messages_with_noise_cleaned[n]), NULL);
+                fail_unless(0 == memcmp(complete_session_messages_with_noise_cleaned[n], msg, len), NULL);
         }
 
         pusher->stop();
@@ -824,9 +898,13 @@ fixio_suite(void)
 
         /* Core test case */
         TCase *tc_core = tcase_create("Core");
+
+        tcase_set_timeout(tc_core, 10);
+
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);
-	tcase_add_test(tc_core, test_FIX_pusher_flush);
+        tcase_add_test(tc_core, test_message_database);
+        tcase_add_test(tc_core, test_FIX_start_stop);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_messages_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages);

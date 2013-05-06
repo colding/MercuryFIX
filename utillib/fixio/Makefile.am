@@ -16,6 +16,8 @@ libfixio_la_LDFLAGS = -static
 
 libfixio_la_SOURCES = \
 	fixio.h \
+	db_utils.h \
+	db_utils.cpp \
 	stack_utils.h \
 	fix_pusher.cpp \
 	fix_popper.cpp
@@ -30,14 +32,20 @@ libfixio_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
 TESTS = check_fixio
 noinst_PROGRAMS = check_fixio
 check_fixio_LDFLAGS = -all-static
-check_fixio_SOURCES = check_fixio.cpp fixio.h
+check_fixio_SOURCES = \
+	check_fixio.cpp \
+	fixio.h \
+	db_utils.h \
+	db_utils.cpp
+
 check_fixio_CPPFLAGS = $(CHECK_CFLAGS)
 check_fixio_LDADD = \
 	$(CHECK_LIBS) \
 	$(MERCURY_top_dir)/utillib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la \
 	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
-	$(MERCURY_top_dir)/stdlib/network/libnetwork.la
+	$(MERCURY_top_dir)/stdlib/network/libnetwork.la \
+	$(MERCURY_top_dir)/stdlib/local_db/liblocaldb.la
 
 ##################################
 # What to clean boiler plate code

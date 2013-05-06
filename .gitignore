@@ -8,6 +8,8 @@
 *.log
 *.ready
 *.trs
+*.sent*
+*.recv*
 test_*
 TAGS
 Makefile
@@ -38,3 +40,4 @@ ar-lib
 versatile
 test-driver
 check_fixio
+cscope*

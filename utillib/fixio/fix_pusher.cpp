@@ -82,7 +82,7 @@
  *   to hold an entire message, as         and the size of it)
  *   entries)
  *
- *                           Reads in turn from fast, slow and session disruptor and writes to sink
+ *                           Reads in turn from fast, slow and session disruptor and writes to sink <== start()/stop() invokes here
  *
  *                                   File descriptor data sink - Data flows down here
  *
@@ -114,7 +114,7 @@
  *
  *
  *                                              (Foxtrot) BLOB disruptor
- *                                with entries of a fair size holding data as it arrives
+ *                                with entries of a fair size holding data as it arrives <== start()/stop() invokes here
  *
  *
  *                                 File descriptor data source - Data flows up from here
@@ -168,8 +168,10 @@
 #define MSG_TYPE_MAX_LENGTH (16)
 
 struct pusher_thread_args_t {
-        bool flushing;
-        int *terminate;
+        int *pause_thread;
+        int *pusher_is_runing;
+        int *db_is_open;
+        MsgDB *db;
         int *error;
         int sink_fd;
         alfa_io_t *alfa;
@@ -321,16 +323,6 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 
-/*
- * Returns the sequence number of last transmitted message or 0 if the
- * session is new.
- */
-static uint64_t
-get_latest_msg_seq_number_sent(void)
-{
-        return 0;
-}
-
 static int
 do_writev(int fd,
           size_t total_bytes_to_write,
@@ -427,7 +419,7 @@ do_writev(int fd,
  */
 static const char*
 complete_FIX_message(uint64_t * const msg_seq_number,
-                     void * const buffer,
+                     uint8_t * const buffer,
                      size_t *msg_length,
                      const struct pusher_thread_args_t * const args)
 {
@@ -440,6 +432,11 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 
         ++(*msg_seq_number);
         msg_seq_number_digits = get_digit_count(*msg_seq_number);
+
+        args->db->store_sent_msg(*msg_seq_number,
+                                 *msg_length,
+                                 buffer + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD,
+                                 (char*)buffer + sizeof(uint32_t));
 
         // We must construct the prefix string,
         // e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
@@ -471,8 +468,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 }
 
 static int
-push_alfa(const bool /* flushing */,
-          struct cursor_t * const alfa_cursor,
+push_alfa(struct cursor_t * const alfa_cursor,
           const struct count_t * const alfa_reg_number,
           uint64_t * const msg_seq_number,
           struct pusher_thread_args_t * const args,
@@ -518,8 +514,7 @@ push_alfa(const bool /* flushing */,
 }
 
 static int
-push_bravo(const bool /* flushing */,
-           struct cursor_t * const bravo_cursor,
+push_bravo(struct cursor_t * const bravo_cursor,
            const struct count_t * const bravo_reg_number,
            uint64_t * const msg_seq_number,
            struct pusher_thread_args_t * const args,
@@ -566,8 +561,7 @@ push_bravo(const bool /* flushing */,
 }
 
 static int
-push_charlie(const bool /* flushing */,
-             struct cursor_t * const charlie_cursor,
+push_charlie(struct cursor_t * const charlie_cursor,
              const struct count_t * const charlie_reg_number,
              uint64_t * const msg_seq_number,
              struct pusher_thread_args_t * const args,
@@ -640,14 +634,26 @@ pusher_thread_func(void *arg)
         if (!vdata) {
                 M_ALERT("no memory");
                 set_flag(args->error, ENOMEM);
-		set_flag(args->terminate, 1);
                 return NULL;
         }
+
+        // get the database running
+        set_flag(args->db_is_open, 0);
+        while (get_flag(args->pause_thread))
+                sleep(1);
+        if (!args->db->open()) {
+                M_ERROR("could not open local database");
+                abort();
+        }
+        set_flag(args->db_is_open, 1);
 
         // Get last message sequence number sent - tag 34.  The
         // sequence number will be incremented whenever a message is
         // sent.
-        msg_seq_number = get_latest_msg_seq_number_sent();
+        if (!args->db->get_latest_sent_seqnum(msg_seq_number)) {
+                M_ALERT("error getting latest sent sequence number");
+                return NULL;
+        }
 
         //
         // register entry processors
@@ -656,38 +662,57 @@ pusher_thread_func(void *arg)
         bravo_cursor.sequence = bravo_entry_processor_barrier_register(args->bravo, &bravo_reg_number);
         charlie_cursor.sequence = charlie_entry_processor_barrier_register(args->charlie, &charlie_reg_number);
 
-        // Push data into sink until told to stop. I'm using a
-        // do-while because then I can use this function to flush the
-        // disruptors as well.
+        // Push data into sink until told to stop.
         do {
+                if (get_flag(args->pause_thread)) {
+                        if (!args->db->close()) {
+                                M_ERROR("could not close local database");
+                                continue;
+                        }
+                        set_flag(args->db_is_open, 0);
+
+                        do {
+                                sleep(1);
+                        } while (get_flag(args->pause_thread));
+
+                        if (!args->db->open()) {
+                                M_ERROR("could not open local database");
+                                abort();
+                        }
+                        set_flag(args->db_is_open, 1);
+                }
+
                 // alfa
-                rval = push_alfa(args->flushing, &alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
+                rval = push_alfa(&alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // bravo
-                rval = push_bravo(args->flushing, &bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
+                rval = push_bravo(&bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // charlie
-                rval = push_charlie(args->flushing, &charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
+                rval = push_charlie(&charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
                 if (rval) {
                         set_flag(args->error, rval);
                         goto out;
                 }
-        } while (!get_flag(args->terminate));
+        } while (1);
 out:
         free(vdata);
         alfa_entry_processor_barrier_unregister(args->alfa, &alfa_reg_number);
         bravo_entry_processor_barrier_unregister(args->bravo, &bravo_reg_number);
         charlie_entry_processor_barrier_unregister(args->charlie, &charlie_reg_number);
 
-        set_flag(args->terminate, 1);
+        if (!args->db->close())
+                M_ERROR("could not close local database");
+
+        set_flag(args->db_is_open, 0);
 
         return NULL;
 }
@@ -699,18 +724,18 @@ FIX_Pusher::FIX_Pusher(const char soh)
 {
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
-        pusher_thread_id_ = pthread_self();
         sink_fd_ = -1;
-        dev_null_ = -1;
         error_ = 0;
         alfa_ = NULL;
         bravo_ = NULL;
         charlie_ = NULL;
         args_ = NULL;
-        set_flag(&terminate_, 1);
+        db_is_open_ = 0;
+        pause_thread_ = 1;
+        pusher_is_running_ = 0;
 }
 
-bool
+int
 FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
 {
         stop();
@@ -734,14 +759,6 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         if (-1 == sink_fd_) {
                 M_ALERT("no sink file descriptor specified");
                 goto err;
-        }
-
-        if (-1 == dev_null_) {
-                dev_null_ = open("/dev/null", O_WRONLY);
-                if (-1 == dev_null_) {
-                        M_ALERT("could not open /dev/null: %s", strerror(errno));
-                        goto err;
-                }
         }
 
         if (!alfa_) {
@@ -777,8 +794,10 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
                 M_ALERT("no memory");
                 goto err;
         }
-        args_->flushing = false;
-        args_->terminate = &terminate_;
+        args_->db = &db_;
+        args_->db_is_open = &db_is_open_;
+        args_->pause_thread = &pause_thread_;
+        args_->pusher_is_runing = &pusher_is_running_;
         args_->sink_fd = sink_fd_;
         args_->error = &error_;
         args_->alfa = alfa_;
@@ -788,14 +807,20 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         args_->FIX_start_length = FIX_start_bytes_length_;
         args_->soh = soh_;
 
-        return true;
+        pthread_t pusher_thread_id;
+        if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
+                M_ALERT("could not create pusher thread");
+                abort();
+        }
+
+        return 1;
 err:
-        return false;
+        return 0;
 }
 
 int
 FIX_Pusher::push(const size_t len,
-                 const void * const data,
+                 const uint8_t * const data,
                  const char * const msg_type)
 {
         struct cursor_t alfa_cursor;
@@ -844,7 +869,7 @@ FIX_Pusher::push(const size_t len,
 
 int
 FIX_Pusher::session_push(const size_t len,
-                         const void * const data,
+                         const uint8_t * const data,
                          const char * const msg_type)
 {
         struct cursor_t charlie_cursor;
@@ -872,47 +897,23 @@ FIX_Pusher::session_push(const size_t len,
 }
 
 void
-FIX_Pusher::flush(void)
+FIX_Pusher::start(const char * const local_cache)
 {
-        int n;
-        int fd;
+        if (local_cache)
+                db_.set_db_path(local_cache);
 
-        stop();
+        set_flag(&pause_thread_, 0);
 
-        fd = sink_fd_;
-        sink_fd_ = dev_null_;
-        args_->flushing = true;
-        pusher_thread_func(args_);
-        args_->flushing = false;
-
-        for (n = 0; n < BRAVO_QUEUE_LENGTH; ++n) {
-                free(bravo_->buffer[n].content.data);
-                bravo_->buffer[n].content.size = 0;
-                bravo_->buffer[n].content.data = NULL;
+        while (!get_flag(&db_is_open_)) {
+                sleep(1);
         }
-        sink_fd_ = fd;
-
-        start();
 }
 
 void
 FIX_Pusher::stop(void)
 {
-        set_flag(&terminate_, 1);
-        if (!pthread_equal(pusher_thread_id_, pthread_self()))
-                pthread_join(pusher_thread_id_, NULL);
-        pusher_thread_id_ = pthread_self();
-}
-
-void
-FIX_Pusher::start(void)
-{
-        set_flag(&terminate_, 0);
-        if (!pthread_equal(pusher_thread_id_, pthread_self()))
-                 return;
-
-        if (!create_joinable_thread(&pusher_thread_id_, args_, pusher_thread_func)) {
-                M_ALERT("could not create pusher thread");
-                abort();
+        set_flag(&pause_thread_, 1);
+        while (get_flag(&db_is_open_)) {
+                sleep(1);
         }
 }

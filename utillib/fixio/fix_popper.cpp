@@ -19,22 +19,22 @@
  *     with the distribution.
  *
  *     (3) Neither the name of the copyright holder nor the names of
- *     its contributorse copht holder nor the names of its
- *     contributors may be used to endorse or promote products derived
- *     from this software without specific prior written permission.
+ *     its contributors may be used to endorse or promote products
+ *     derived from this software without specific prior written
+ *     permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORSGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 /*
@@ -82,7 +82,7 @@
  *   to hold an entire message, as         and the size of it)
  *   entries)
  *
- *                           Reads in turn from fast, slow and session disruptor and writes to sink
+ *                           Reads in turn from fast, slow and session disruptor and writes to sink <== start()/stop() invokes here
  *
  *                                   File descriptor data sink - Data flows down here
  *
@@ -114,7 +114,7 @@
  *
  *
  *                                              (Foxtrot) BLOB disruptor
- *                                with entries of a fair size holding data as it arrives
+ *                                with entries of a fair size holding data as it arrives <== start()/stop() invokes here
  *
  *
  *                                 File descriptor data source - Data flows up from here
@@ -144,6 +144,7 @@
 #include "stdlib/process/threads.h"
 #include "stdlib/marshal/primitives.h"
 #include "stdlib/macros/macros.h"
+#include "stdlib/network/network.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
 #include "utillib/fixio/stack_utils.h"
@@ -152,6 +153,9 @@
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.
 struct splitter_thread_args_t {
+        int *pause_thread;
+        int *db_is_open;
+        MsgDB * db;
         delta_io_t *delta;
         echo_io_t *echo;
         foxtrot_io_t *foxtrot;
@@ -162,7 +166,8 @@ struct splitter_thread_args_t {
 
 // takes incomming data from source_fd_ and puts it onto foxtrot
 struct sucker_thread_args_t {
-        int *terminate_sucker;
+        int *pause_thread;
+        int *sucker_is_running;
         int *error;
         int source_fd;
         foxtrot_io_t *foxtrot;
@@ -260,22 +265,12 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_)
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
+DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_NONBLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 
 /*********************
  *      FIX_Pusher
  *********************/
-
-/*
- * Returns the sequence number of last recieved message or 0 if the
- * session is new. A ResendRequest is send if the number returned is
- * not 0 (that indicates a reconnect).
- */
-static uint64_t
-get_latest_msg_seq_number_recieved(void)
-{
-        return 0;
-}
 
 /*
  * msg_type is terminated with soh, not zero as normal c-strings
@@ -289,6 +284,47 @@ is_session_message(const char /*soh*/,
         }
 
         return 0;
+}
+
+/*
+ * This will actually accept sequence numbers in the form of:
+ *
+ * "<SOH>34=134 hg utf<SOH>".
+ *
+ * I'm going to let this one pass for the sake of simpler code.
+ */
+static inline uint64_t
+get_sequence_number(const char soh,
+                    const uint64_t len,
+                    uint8_t * const msg)
+{
+        static char segnum_str[5] = " 34=";
+        char *end;
+        char *start;
+        uint64_t retv;
+
+        segnum_str[0] = soh;
+        start = (char*)memmem(msg, len, segnum_str, sizeof(segnum_str) - 1);
+        if (!start)
+                return 0;
+        start += 4; // we know this is safe as this function is called after we have verified the checksum
+        end = start;
+
+        do {
+                if (soh == *end)
+                        break;
+
+                if (!isdigit(*end))
+                        break;
+
+                ++end;
+        } while (1);
+        *end = '\0';
+
+        retv = strtoull(start, NULL, 10);
+        *end = soh;
+
+        return (ULLONG_MAX != retv ? retv : 0);
 }
 
 enum FIX_Parse_State
@@ -311,7 +347,8 @@ splitter_thread_func(void *arg)
         uint32_t bytes_left_to_copy = 0;
         char length_str[32] = { '\0' };
         const uint8_t *msg_type;
-        uint64_t msg_seq_number;
+        uint64_t msg_seq_number_expected;
+        uint64_t msg_seq_number_recieved;
         struct cursor_t n;
 
         // split onto these
@@ -332,10 +369,22 @@ splitter_thread_func(void *arg)
                 abort();
         }
 
+        set_flag(args->db_is_open, 0);
+        while (get_flag(args->pause_thread))
+                sleep(1);
+        if (!args->db->open()) {
+                M_ERROR("could not open local database");
+                abort();
+        }
+        set_flag(args->db_is_open, 1);
+
         // Get last message sequence number recieved - tag 34.  The
         // sequence number will be incremented whenever a message is
         // recieved and varified (by checksum and FIX version)
-        msg_seq_number = get_latest_msg_seq_number_recieved();
+        if (!args->db->get_latest_recv_seqnum(msg_seq_number_expected)) {
+                M_ALERT("error getting latest recieved sequence number");
+                abort();
+        }
 
         //
         // register entry processor for foxtrot
@@ -354,6 +403,24 @@ splitter_thread_func(void *arg)
         offset = 0;
         state = FindingBeginString;
         do {
+                if (get_flag(args->pause_thread)) {
+                        if (!args->db->close()) {
+                                M_ERROR("could not close local database");
+                                continue;
+                        }
+                        set_flag(args->db_is_open, 0);
+
+                        do {
+                                sleep(1);
+                        } while (get_flag(args->pause_thread));
+
+                        if (!args->db->open()) {
+                                M_ERROR("could not open local database");
+                                abort();
+                        }
+                        set_flag(args->db_is_open, 1);
+                }
+
                 if (!foxtrot_entry_processor_barrier_wait_for_nonblocking(args->foxtrot, &cursor_upper_limit))
                         continue;
 
@@ -426,22 +493,29 @@ splitter_thread_func(void *arg)
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
                                                 if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
                                                         msg_type = delta_entry->content.data + args->begin_string_length + strlen(length_str) + 4;
-                                                        if (is_session_message(args->soh, msg_type)) {
-                                                                if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
-                                                                        M_ALERT("oversized session message");
-                                                                } else {
-                                                                        setul(echo_entry->content, delta_entry->content.size);
-                                                                        memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
-                                                                        echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
-                                                                        echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
-                                                                        echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-                                                                        ++msg_seq_number;
-                                                                }
+                                                        msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
+                                                        if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
+                                                                M_ALERT("wrong sequence number: %d != %d", msg_seq_number_recieved, msg_seq_number_expected);
+                                                                --msg_seq_number_expected;
                                                         } else {
-                                                                delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
-                                                                delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
-                                                                delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-                                                                ++msg_seq_number;
+                                                                if (is_session_message(args->soh, msg_type)) {
+                                                                        if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
+                                                                                M_ALERT("oversized session message");
+                                                                                --msg_seq_number_expected;
+                                                                        } else {
+                                                                                args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
+                                                                                setul(echo_entry->content, delta_entry->content.size);
+                                                                                memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
+                                                                                echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
+                                                                                echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+                                                                                echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+                                                                        }
+                                                                } else {
+                                                                        args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
+                                                                        delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
+                                                                        delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+                                                                        delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+                                                                }
                                                         }
                                                 }
                                                 state = FindingBeginString;
@@ -489,18 +563,35 @@ sucker_thread_func(void *arg)
         void *buf;
         ssize_t rval;
         int entry_open = 0;
+        const timeout_t timeout = { 1 };
         struct cursor_t foxtrot_cursor;
         struct foxtrot_entry_t *foxtrot_entry = NULL;
 
         struct sucker_thread_args_t *args = (struct sucker_thread_args_t*)arg;
         if (!args) {
-                M_ERROR("sucker thread cannot run");
+                M_ERROR("sucker thread cannot run (no parameters)");
+                abort();
+        }
+
+        if (!set_recv_timeout(args->source_fd, timeout)) {
+                M_ERROR("sucker thread cannot run (cannot set timeout)");
                 abort();
         }
 
         // pull data from source_fd onto foxtrot until told to stop
-        while (!get_flag(args->terminate_sucker)) {
-                foxtrot_publisher_port_next_entry_blocking(args->foxtrot, &foxtrot_cursor);
+        set_flag(args->sucker_is_running, 1);
+        do {
+                if (get_flag(args->pause_thread)) {
+                        set_flag(args->sucker_is_running, 0);
+                        do {
+                                sleep(1);
+                        } while (get_flag(args->pause_thread));
+                        set_flag(args->sucker_is_running, 1);
+                }
+
+                if (!foxtrot_publisher_port_next_entry_nonblocking(args->foxtrot, &foxtrot_cursor))
+                        continue;
+
                 entry_open = 1;
                 foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
                 buf = foxtrot_entry->content + sizeof(uint32_t);
@@ -515,8 +606,13 @@ sucker_thread_func(void *arg)
                         case ETIMEDOUT:
                         case EAGAIN:
                         case EINTR:
-                                if (get_flag(args->terminate_sucker))
-                                        goto out;
+                                if (get_flag(args->pause_thread)) {
+                                        set_flag(args->sucker_is_running, 0);
+                                        do {
+                                                sleep(1);
+                                        } while (get_flag(args->pause_thread));
+                                        set_flag(args->sucker_is_running, 1);
+                                }
                                 goto again;
                         default:
                                 set_flag(args->error, errno);
@@ -529,7 +625,7 @@ sucker_thread_func(void *arg)
                 }
                 foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
                 entry_open = 0;
-        }
+        } while (1);
 out:
         if (entry_open) {
                 setul(foxtrot_entry->content, 0);
@@ -547,17 +643,18 @@ FIX_Popper::FIX_Popper(const char soh)
 {
         source_fd_ = -1;
         memset(begin_string_, '\0', sizeof(begin_string_));
-        sucker_thread_id_ = pthread_self();
         error_ = 0;
         delta_ = NULL;
         echo_ = NULL;
         foxtrot_ = NULL;
         splitter_args_ = NULL;
         sucker_args_ = NULL;
-        set_flag(&terminate_, 1);
+        pause_threads_ = 1;
+        db_is_open_ = 0;
+        sucker_is_running_ = 0;
 }
 
-bool
+int
 FIX_Popper::init(const char * const FIX_ver, int source_fd)
 {
         stop();
@@ -627,6 +724,9 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                         M_ALERT("no memory");
                         goto err;
                 }
+                splitter_args_->pause_thread = &pause_threads_;
+                splitter_args_->db_is_open = &db_is_open_;
+                splitter_args_->db = &db_;
                 splitter_args_->begin_string = begin_string_;
                 splitter_args_->begin_string_length = strlen(begin_string_);
                 splitter_args_->delta = delta_;
@@ -647,19 +747,26 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 M_ALERT("no memory");
                 goto err;
         }
-        sucker_args_->terminate_sucker = &terminate_;
+        sucker_args_->pause_thread = &pause_threads_;
+        sucker_args_->sucker_is_running = &sucker_is_running_;
         sucker_args_->source_fd = source_fd_;
         sucker_args_->error = &error_;
         sucker_args_->foxtrot = foxtrot_;
 
-        return true;
+        pthread_t sucker_thread_id;
+        if (!create_detached_thread(&sucker_thread_id, sucker_args_, sucker_thread_func)) {
+                M_ALERT("could not create sucker thread");
+                abort();
+        }
+
+        return 1;
 err:
-        return false;
+        return 0;
 }
 
 int
 FIX_Popper::pop(size_t * const len,
-                void **data)
+                uint8_t **data)
 {
         const struct delta_entry_t *delta_entry;
         struct cursor_t n;
@@ -705,7 +812,7 @@ FIX_Popper::register_popper(struct cursor_t * const /*cursor*/,
  */
 void
 FIX_Popper::session_pop(size_t * const len,
-                        void **data)
+                        uint8_t **data)
 {
         struct echo_entry_t *echo_entry;
         struct cursor_t n;
@@ -725,27 +832,32 @@ FIX_Popper::session_pop(size_t * const len,
 }
 
 void
-FIX_Popper::stop(void)
+FIX_Popper::start(const char * const local_cache)
 {
-        /*
-         * disabled - needs a non-blocking next_entry before this can be activated again
-         */
-        return;
-        set_flag(&terminate_, 1);
-        if (!pthread_equal(sucker_thread_id_, pthread_self()))
-                pthread_join(sucker_thread_id_, NULL);
-        sucker_thread_id_ = pthread_self();
+        if (local_cache)
+                db_.set_db_path(local_cache);
+
+        set_flag(&pause_threads_, 0);
+
+        while (!get_flag(&db_is_open_)) {
+                sleep(1);
+        }
+
+        while (!get_flag(&sucker_is_running_)) {
+                sleep(1);
+        }
 }
 
 void
-FIX_Popper::start(void)
+FIX_Popper::stop(void)
 {
-        set_flag(&terminate_, 0);
-        if (!pthread_equal(sucker_thread_id_, pthread_self()))
-                return;
+        set_flag(&pause_threads_, 1);
 
-        if (!create_joinable_thread(&sucker_thread_id_, sucker_args_, sucker_thread_func)) {
-                M_ALERT("could not create sucker thread");
-                abort();
+        while (get_flag(&db_is_open_)) {
+                sleep(1);
+        }
+
+        while (get_flag(&sucker_is_running_)) {
+                sleep(1);
         }
 }
