@@ -72,40 +72,45 @@ MsgDB::open(void)
                 M_ALERT("could not open local database");
                 goto err;
         }
-
+	sqlite3_exec(db_, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);    
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not enable WAL");
+		/* continuing in default mode */
+        }
+    
         ret = sqlite3_exec(db_, CREATE_RECV_MSG_TABLE, NULL, NULL, &err_msg);
         if (SQLITE_OK != ret) {
-                M_ALERT("could create recv_msg table");
+                M_ALERT("could not create recv_msg table");
                 goto err;
         }
 
         ret = sqlite3_exec(db_, CREATE_SENT_MSG_TABLE, NULL, NULL, &err_msg);
         if (SQLITE_OK != ret) {
-                M_ALERT("could create sent_msg table");
+                M_ALERT("could not create sent_msg table");
                 goto err;
         }
 
         ret = sqlite3_prepare_v2(db_, INSERT_RECV_MESSAGE, -1,  &insert_recv_msg_statement, NULL);
         if (SQLITE_OK != ret) {
-                M_ALERT("could prepare insert recv msg statement");
+                M_ALERT("could not prepare insert recv msg statement");
                 goto err;
         }
 
         ret = sqlite3_prepare_v2(db_, INSERT_SENT_MESSAGE, -1,  &insert_sent_msg_statement, NULL);
         if (SQLITE_OK != ret) {
-                M_ALERT("could prepare insert recv msg statement");
+                M_ALERT("could not prepare insert recv msg statement");
                 goto err;
         }
 
         ret = sqlite3_prepare_v2(db_, SELECT_MAX_RECV_SEQNUM, -1,  &max_recv_seqnum_statement, NULL);
         if (SQLITE_OK != ret) {
-                M_ALERT("could prepare max recv seqnum statement");
+                M_ALERT("could not prepare max recv seqnum statement");
                 goto err;
         }
 
         ret = sqlite3_prepare_v2(db_, SELECT_MAX_SENT_SEQNUM, -1,  &max_sent_seqnum_statement, NULL);
         if (SQLITE_OK != ret) {
-                M_ALERT("could prepare max sent seqnum statement");
+                M_ALERT("could not prepare max sent seqnum statement");
                 goto err;
         }
 
