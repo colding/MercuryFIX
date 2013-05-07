@@ -136,7 +136,7 @@ MsgDB::close(void)
 
         if (!db_)
                 return 1;
-close_db:
+
         sqlite3_finalize(insert_recv_msg_statement);
         sqlite3_finalize(insert_sent_msg_statement);
         sqlite3_finalize(max_recv_seqnum_statement);
@@ -146,6 +146,7 @@ close_db:
         max_recv_seqnum_statement = NULL;
         max_sent_seqnum_statement = NULL;
 
+close_db:
         ret = sqlite3_close(db_);
         switch (ret) {
         case SQLITE_OK:
@@ -170,14 +171,6 @@ close_db:
         return 1;
 }
 
-/*
- * Stores outgoing partial messages.
- *
- * seqnum: Sequence number
- * len: Number of bytes in msg
- * msg: The partial message
- * msg_type: The message type
- */
 int
 MsgDB::store_sent_msg(const uint64_t seqnum,
                       const uint64_t len,
@@ -220,13 +213,6 @@ out:
         return ((SQLITE_DONE == ret) ? 1 : 0);
 }
 
-/*
- * Stores incoming complete messages.
- *
- * seqnum: Sequence number
- * msg: The complete message
- * len: Number of bytes in msg
- */
 int
 MsgDB::store_recv_msg(const uint64_t seqnum,
                       const uint64_t len,
@@ -262,9 +248,6 @@ out:
         return ((SQLITE_DONE == ret) ? 1 : 0);
 }
 
-/*
- * Gets the latest sequence number recieved.
- */
 int
 MsgDB::get_latest_recv_seqnum(uint64_t & seqnum) const
 {
@@ -295,9 +278,6 @@ err:
         return 0;
 }
 
-/*
- * Gets the latest sequence number sent.
- */
 int
 MsgDB::get_latest_sent_seqnum(uint64_t & seqnum) const
 {
@@ -325,19 +305,6 @@ err:
         return 0;
 }
 
-
-/*
- * Returns a vector of previously sent partial messages ready
- * to be re-sent starting with sequence number "start" and
- * ending with sequence number "end".
- *
- * If "end" is larger than the largest sequence number then
- * all messages, starting with "start", is returned.
- *
- * This method is not performance critical (re-sending is a
- * fairly rare occurrence) and the implementation reflects
- * that.
- */
 std::vector<std::vector<uint8_t> > *
 MsgDB::get_recv_msgs(uint64_t /*start*/,
                      uint64_t /*end*/) const

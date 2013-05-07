@@ -64,6 +64,7 @@ public:
 	~MsgDB()
 		{
 			this->close();
+			free(db_path_);
 		};
 
 	/*

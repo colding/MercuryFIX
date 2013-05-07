@@ -403,7 +403,7 @@ splitter_thread_func(void *arg)
         offset = 0;
         state = FindingBeginString;
         do {
-                if (get_flag(args->pause_thread)) {
+                if (UNLIKELY(get_flag(args->pause_thread))) {
                         if (!args->db->close()) {
                                 M_ERROR("could not close local database");
                                 continue;
@@ -581,7 +581,7 @@ sucker_thread_func(void *arg)
         // pull data from source_fd onto foxtrot until told to stop
         set_flag(args->sucker_is_running, 1);
         do {
-                if (get_flag(args->pause_thread)) {
+                if (UNLIKELY(get_flag(args->pause_thread))) {
                         set_flag(args->sucker_is_running, 0);
                         do {
                                 sleep(1);
@@ -606,7 +606,7 @@ sucker_thread_func(void *arg)
                         case ETIMEDOUT:
                         case EAGAIN:
                         case EINTR:
-                                if (get_flag(args->pause_thread)) {
+                                if (UNLIKELY(get_flag(args->pause_thread))) {
                                         set_flag(args->sucker_is_running, 0);
                                         do {
                                                 sleep(1);
@@ -741,22 +741,23 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 }
         }
 
-        free(sucker_args_);
-        sucker_args_ = (sucker_thread_args_t*)malloc(sizeof(struct sucker_thread_args_t));
         if (!sucker_args_) {
-                M_ALERT("no memory");
-                goto err;
-        }
-        sucker_args_->pause_thread = &pause_threads_;
-        sucker_args_->sucker_is_running = &sucker_is_running_;
-        sucker_args_->source_fd = source_fd_;
-        sucker_args_->error = &error_;
-        sucker_args_->foxtrot = foxtrot_;
+		sucker_args_ = (sucker_thread_args_t*)malloc(sizeof(struct sucker_thread_args_t));
+		if (!sucker_args_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		sucker_args_->pause_thread = &pause_threads_;
+		sucker_args_->sucker_is_running = &sucker_is_running_;
+		sucker_args_->source_fd = source_fd_;
+		sucker_args_->error = &error_;
+		sucker_args_->foxtrot = foxtrot_;
 
-        pthread_t sucker_thread_id;
-        if (!create_detached_thread(&sucker_thread_id, sucker_args_, sucker_thread_func)) {
-                M_ALERT("could not create sucker thread");
-                abort();
+		pthread_t sucker_thread_id;
+		if (!create_detached_thread(&sucker_thread_id, sucker_args_, sucker_thread_func)) {
+			M_ALERT("could not create sucker thread");
+			abort();
+		}
         }
 
         return 1;

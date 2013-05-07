@@ -204,7 +204,6 @@ private:
         int error_;                         // errno from the pusher thread
         int pause_thread_;                  // pause pusher thread
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
-        int pusher_is_running_;             // 1 (one) if the pusher thread is running, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
 
         int sink_fd_; // the file descriptor of the socket sink

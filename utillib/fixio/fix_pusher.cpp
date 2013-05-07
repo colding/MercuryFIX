@@ -169,7 +169,6 @@
 
 struct pusher_thread_args_t {
         int *pause_thread;
-        int *pusher_is_runing;
         int *db_is_open;
         MsgDB *db;
         int *error;
@@ -408,9 +407,9 @@ do_writev(int fd,
  * msg_seq_number - previous sequence number to be incremented
  *
  * buffer         - Contains uint32_t data length counted from (buffer +
- *                  FIX_BUFFER_RESERVED_HEAD), then msg type, then
- *                  partial FIX message with enough free space in the
- *                  end to hold the checksum.
+ *                  FIX_BUFFER_RESERVED_HEAD), then a zero terminated
+ *                  msg type, then partial FIX message with enough
+ *                  free space in the end to hold the checksum.
  *
  * msg_length     - Output parameter to contain the total length of the
  *                  complete FIX message
@@ -664,7 +663,7 @@ pusher_thread_func(void *arg)
 
         // Push data into sink until told to stop.
         do {
-                if (get_flag(args->pause_thread)) {
+                if (UNLIKELY(get_flag(args->pause_thread))) {
                         if (!args->db->close()) {
                                 M_ERROR("could not close local database");
                                 continue;
@@ -732,7 +731,6 @@ FIX_Pusher::FIX_Pusher(const char soh)
         args_ = NULL;
         db_is_open_ = 0;
         pause_thread_ = 1;
-        pusher_is_running_ = 0;
 }
 
 int
@@ -788,30 +786,30 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
                 charlie_ring_buffer_init(charlie_);
         }
 
-        free(args_);
-        args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
         if (!args_) {
-                M_ALERT("no memory");
-                goto err;
-        }
-        args_->db = &db_;
-        args_->db_is_open = &db_is_open_;
-        args_->pause_thread = &pause_thread_;
-        args_->pusher_is_runing = &pusher_is_running_;
-        args_->sink_fd = sink_fd_;
-        args_->error = &error_;
-        args_->alfa = alfa_;
-        args_->bravo = bravo_;
-        args_->charlie = charlie_;
-        args_->FIX_start = FIX_start_bytes_;
-        args_->FIX_start_length = FIX_start_bytes_length_;
-        args_->soh = soh_;
+		args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
+		if (!args_) {
+			M_ALERT("no memory");
+			goto err;
+		}
+		args_->db = &db_;
+		args_->db_is_open = &db_is_open_;
+		args_->pause_thread = &pause_thread_;
+		args_->sink_fd = sink_fd_;
+		args_->error = &error_;
+		args_->alfa = alfa_;
+		args_->bravo = bravo_;
+		args_->charlie = charlie_;
+		args_->FIX_start = FIX_start_bytes_;
+		args_->FIX_start_length = FIX_start_bytes_length_;
+		args_->soh = soh_;
 
-        pthread_t pusher_thread_id;
-        if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
-                M_ALERT("could not create pusher thread");
-                abort();
-        }
+		pthread_t pusher_thread_id;
+		if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
+			M_ALERT("could not create pusher thread");
+			abort();
+		}
+	}
 
         return 1;
 err:
@@ -855,8 +853,14 @@ FIX_Pusher::push(const size_t len,
                         bravo_entry->content.size = len;
                 } else {
                         free(bravo_entry->content.data);
-                        bravo_entry->content.size = len;
                         bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
+			if (UNLIKELY(!bravo_entry->content.data)) {
+				bravo_entry->content.size = 0;
+				bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
+				return ENOMEM;
+			} else {
+				bravo_entry->content.size = len;
+			}
                 }
                 strcpy((char*)bravo_entry->content.data, msg_type);
                 memcpy(bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
