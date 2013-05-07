@@ -43,6 +43,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <vector>
+#include <string>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
@@ -51,6 +52,13 @@
 
 class MsgDB {
 public:
+	class PartialMessage {
+	public:
+		uint64_t SeqNum;
+		std::string MsgType;
+		std::vector<uint8_t> MsgBody; 
+	};
+
 	MsgDB(void)
 		{
 			db_ = NULL;
@@ -140,7 +148,7 @@ public:
 	/*
 	 * Returns a vector of previously sent partial messages ready
 	 * to be re-sent starting with sequence number "start" and
-	 * ending with sequence number "end". 
+	 * ending with sequence number "end", both included.
 	 *
 	 * If "end" is larger than the largest sequence number then
 	 * all messages, starting with "start", is returned.
@@ -148,6 +156,19 @@ public:
 	 * This method is not performance critical (re-sending is a
 	 * fairly rare occurrence) and the implementation reflects
 	 * that.
+	 */
+	std::vector<MsgDB::PartialMessage> *get_sent_msgs(uint64_t start, uint64_t end) const;
+
+	/*
+	 * Returns a vector of previously recieved complete messages
+	 * starting with sequence number "start" and ending with
+	 * sequence number "end", both included.
+	 *
+	 * If "end" is larger than the largest sequence number then
+	 * all messages, starting with "start", is returned.
+	 *
+	 * This method is not performance critical and the
+	 * implementation reflects that.
 	 */
 	std::vector<std::vector<uint8_t> > *get_recv_msgs(uint64_t start, uint64_t end) const;
 

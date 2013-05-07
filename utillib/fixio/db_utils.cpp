@@ -310,7 +310,7 @@ err:
         return 0;
 }
 
-std::vector<std::vector<uint8_t> > *
+std::vector<std::vector<uint8_t> >*
 MsgDB::get_recv_msgs(uint64_t /*start*/,
                      uint64_t /*end*/) const
 {
@@ -321,3 +321,18 @@ MsgDB::get_recv_msgs(uint64_t /*start*/,
 
         return retv;
 }
+
+std::vector<MsgDB::PartialMessage>*
+MsgDB::get_sent_msgs(uint64_t /*start*/,
+                     uint64_t /*end*/) const
+{
+        std::vector<MsgDB::PartialMessage> *retv = NULL;
+
+        if (!db_)
+                return NULL;
+
+        return retv;
+}
+
+
+
