@@ -371,7 +371,7 @@ splitter_thread_func(void *arg)
 
         set_flag(args->db_is_open, 0);
         while (get_flag(args->pause_thread))
-                sleep(1);
+                sched_yield();
         if (!args->db->open()) {
                 M_ERROR("could not open local database");
                 abort();
@@ -411,7 +411,7 @@ splitter_thread_func(void *arg)
                         set_flag(args->db_is_open, 0);
 
                         do {
-                                sleep(1);
+                                sched_yield();
                         } while (get_flag(args->pause_thread));
 
                         if (!args->db->open()) {
@@ -584,7 +584,7 @@ sucker_thread_func(void *arg)
                 if (UNLIKELY(get_flag(args->pause_thread))) {
                         set_flag(args->sucker_is_running, 0);
                         do {
-                                sleep(1);
+                                sched_yield();
                         } while (get_flag(args->pause_thread));
                         set_flag(args->sucker_is_running, 1);
                 }
@@ -609,7 +609,7 @@ sucker_thread_func(void *arg)
                                 if (UNLIKELY(get_flag(args->pause_thread))) {
                                         set_flag(args->sucker_is_running, 0);
                                         do {
-                                                sleep(1);
+                                                sched_yield();
                                         } while (get_flag(args->pause_thread));
                                         set_flag(args->sucker_is_running, 1);
                                 }
@@ -841,11 +841,11 @@ FIX_Popper::start(const char * const local_cache)
         set_flag(&pause_threads_, 0);
 
         while (!get_flag(&db_is_open_)) {
-                sleep(1);
+                sched_yield();
         }
 
         while (!get_flag(&sucker_is_running_)) {
-                sleep(1);
+                sched_yield();
         }
 }
 
@@ -855,10 +855,10 @@ FIX_Popper::stop(void)
         set_flag(&pause_threads_, 1);
 
         while (get_flag(&db_is_open_)) {
-                sleep(1);
+                sched_yield();
         }
 
         while (get_flag(&sucker_is_running_)) {
-                sleep(1);
+                sched_yield();
         }
 }

@@ -899,7 +899,7 @@ fixio_suite(void)
         /* Core test case */
         TCase *tc_core = tcase_create("Core");
 
-        tcase_set_timeout(tc_core, 10);
+        tcase_set_timeout(tc_core, 4);
 
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);

@@ -639,7 +639,7 @@ pusher_thread_func(void *arg)
         // get the database running
         set_flag(args->db_is_open, 0);
         while (get_flag(args->pause_thread))
-                sleep(1);
+                sched_yield();
         if (!args->db->open()) {
                 M_ERROR("could not open local database");
                 abort();
@@ -671,7 +671,7 @@ pusher_thread_func(void *arg)
                         set_flag(args->db_is_open, 0);
 
                         do {
-                                sleep(1);
+                                sched_yield();
                         } while (get_flag(args->pause_thread));
 
                         if (!args->db->open()) {
@@ -909,7 +909,7 @@ FIX_Pusher::start(const char * const local_cache)
         set_flag(&pause_thread_, 0);
 
         while (!get_flag(&db_is_open_)) {
-                sleep(1);
+                sched_yield();
         }
 }
 
@@ -918,6 +918,6 @@ FIX_Pusher::stop(void)
 {
         set_flag(&pause_thread_, 1);
         while (get_flag(&db_is_open_)) {
-                sleep(1);
+                sched_yield();
         }
 }
