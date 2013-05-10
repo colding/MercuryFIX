@@ -844,7 +844,6 @@ FIX_Popper::start(const char * const local_cache,
                 if (0 <= source_fd_)
                         close(source_fd_);
                 source_fd_ = source_fd;
-                M_ALERT("setting source fd");
         }
         if (0 > source_fd_) {
                 M_ALERT("no source file descriptor specified");
