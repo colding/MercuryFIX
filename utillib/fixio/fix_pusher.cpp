@@ -651,6 +651,7 @@ pusher_thread_func(void *arg)
         // sent.
         if (!args->db->get_latest_sent_seqnum(msg_seq_number)) {
                 M_ALERT("error getting latest sent sequence number");
+		free(vdata);
                 return NULL;
         }
 

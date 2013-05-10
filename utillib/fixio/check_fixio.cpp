@@ -353,7 +353,6 @@ make_fix_message(const char * const msg_type,
 START_TEST(test_FIX_Pusher_create)
 {
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
-        int sink_fd = open("/dev/null", O_WRONLY);
 
         fail_unless(NULL != pusher, NULL);
         fail_unless(1 == pusher->init(), NULL);
@@ -366,7 +365,6 @@ END_TEST
 START_TEST(test_FIX_Popper_create)
 {
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
-        int source_fd = open("/dev/null", O_WRONLY);
 
         fail_unless(NULL != popper, NULL);
         fail_unless(1 == popper->init(), NULL);
@@ -419,8 +417,7 @@ START_TEST(test_FIX_start_stop)
         const char * const sent_db = "23E19F70-616C-4551-BB0E-2EF61EFB9474.sent";
         const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
 
-        int n;
-        int m;
+	int n;
         size_t len;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
@@ -477,7 +474,6 @@ START_TEST(test_FIX_change_version)
         const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
 
         int n;
-        int m;
         size_t len;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
@@ -890,7 +886,6 @@ END_TEST
  */
 START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
 {
-        int n;
         size_t send_len;
         size_t recv_len;
         uint8_t *send_msg;
@@ -932,7 +927,6 @@ END_TEST
  */
 START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
 {
-        int n;
         size_t send_len;
         size_t recv_len;
         uint8_t *send_msg;
