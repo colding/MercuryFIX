@@ -172,12 +172,12 @@ struct pusher_thread_args_t {
         int *db_is_open;
         MsgDB *db;
         int *error;
-        int sink_fd;
+        int *sink_fd;
         alfa_io_t *alfa;
         bravo_io_t *bravo;
         charlie_io_t *charlie;
         const char *FIX_start;
-        int FIX_start_length;
+        int *FIX_start_length;
         char soh;
 };
 
@@ -450,7 +450,7 @@ complete_FIX_message(uint64_t * const msg_seq_number,
                 + *msg_length                      /* length of partial FIX message */
                 - 3;                               /* the 3 bytes comprising "10=" in the end of the partial FIX message must not be included in the body length */
         body_length_digits = get_digit_count(body_length);
-        total_prefix_length = args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
+        total_prefix_length = *args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
 
         // build message
         sprintf(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
@@ -492,7 +492,7 @@ push_alfa(struct cursor_t * const alfa_cursor,
 
                         ++idx;
                         if (UNLIKELY(IOV_MAX == idx)) {
-                                retv = do_writev(args->sink_fd, total, idx, vdata);
+                                retv = do_writev(*args->sink_fd, total, idx, vdata);
                                 if (retv) {
                                         M_WARNING("%s", strerror(retv));
                                         return retv; // we don't bother to release the entries as we are shutting down when in error anyways
@@ -500,7 +500,7 @@ push_alfa(struct cursor_t * const alfa_cursor,
                                 idx = 0;
                         }
                 }
-                retv = do_writev(args->sink_fd, total, idx, vdata);
+                retv = do_writev(*args->sink_fd, total, idx, vdata);
                 if (retv) {
                         M_WARNING("%s", strerror(retv));
                         return retv;
@@ -539,7 +539,7 @@ push_bravo(struct cursor_t * const bravo_cursor,
 
                         ++idx;
                         if (UNLIKELY(IOV_MAX == idx)) {
-                                retv = do_writev(args->sink_fd, total, idx, vdata);
+                                retv = do_writev(*args->sink_fd, total, idx, vdata);
                                 if (retv) {
                                         M_WARNING("%s", strerror(retv));
                                         return retv; // we don't bother to release the entries as we are shutting down when in error anyways
@@ -547,7 +547,7 @@ push_bravo(struct cursor_t * const bravo_cursor,
                                 idx = 0;
                         }
                 }
-                retv = do_writev(args->sink_fd, total, idx, vdata);
+                retv = do_writev(*args->sink_fd, total, idx, vdata);
                 if (retv) {
                         M_WARNING("%s", strerror(retv));
                         return retv;
@@ -585,7 +585,7 @@ push_charlie(struct cursor_t * const charlie_cursor,
 
                         ++idx;
                         if (UNLIKELY(IOV_MAX == idx)) {
-                                retv = do_writev(args->sink_fd, total, idx, vdata);
+                                retv = do_writev(*args->sink_fd, total, idx, vdata);
                                 if (retv) {
                                         M_WARNING("%s", strerror(retv));
                                         return retv; // we don't bother to release the entries as we are shutting down when in error anyways
@@ -593,7 +593,7 @@ push_charlie(struct cursor_t * const charlie_cursor,
                                 idx = 0;
                         }
                 }
-                retv = do_writev(args->sink_fd, total, idx, vdata);
+                retv = do_writev(*args->sink_fd, total, idx, vdata);
                 if (retv) {
                         M_WARNING("%s", strerror(retv));
                         return retv;
@@ -731,33 +731,13 @@ FIX_Pusher::FIX_Pusher(const char soh)
         args_ = NULL;
         db_is_open_ = 0;
         pause_thread_ = 1;
+	started_ = 0;
 }
 
 int
-FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
+FIX_Pusher::init(void)
 {
         stop();
-
-        if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
-                M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
-                goto err;
-        }
-        if (!FIX_start_bytes_[0] && !FIX_ver) {
-                M_ALERT("no FIX version specified");
-                goto err;
-        }
-        snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
-        FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
-
-        if (-1 != sink_fd) {
-                if (sink_fd_)
-                        close(sink_fd_);
-                sink_fd_ = sink_fd;
-        }
-        if (-1 == sink_fd_) {
-                M_ALERT("no sink file descriptor specified");
-                goto err;
-        }
 
         if (!alfa_) {
                 alfa_ = alfa_ring_buffer_malloc();
@@ -787,29 +767,29 @@ FIX_Pusher::init(const char * const FIX_ver, int sink_fd)
         }
 
         if (!args_) {
-		args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
-		if (!args_) {
-			M_ALERT("no memory");
-			goto err;
-		}
-		args_->db = &db_;
-		args_->db_is_open = &db_is_open_;
-		args_->pause_thread = &pause_thread_;
-		args_->sink_fd = sink_fd_;
-		args_->error = &error_;
-		args_->alfa = alfa_;
-		args_->bravo = bravo_;
-		args_->charlie = charlie_;
-		args_->FIX_start = FIX_start_bytes_;
-		args_->FIX_start_length = FIX_start_bytes_length_;
-		args_->soh = soh_;
+                args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
+                if (!args_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                args_->db = &db_;
+                args_->db_is_open = &db_is_open_;
+                args_->pause_thread = &pause_thread_;
+                args_->sink_fd = &sink_fd_;
+                args_->error = &error_;
+                args_->alfa = alfa_;
+                args_->bravo = bravo_;
+                args_->charlie = charlie_;
+                args_->FIX_start = FIX_start_bytes_;
+                args_->FIX_start_length = &FIX_start_bytes_length_;
+                args_->soh = soh_;
 
-		pthread_t pusher_thread_id;
-		if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
-			M_ALERT("could not create pusher thread");
-			abort();
-		}
-	}
+                pthread_t pusher_thread_id;
+                if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
+                        M_ALERT("could not create pusher thread");
+                        goto err;
+                }
+        }
 
         return 1;
 err:
@@ -854,13 +834,13 @@ FIX_Pusher::push(const size_t len,
                 } else {
                         free(bravo_entry->content.data);
                         bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
-			if (UNLIKELY(!bravo_entry->content.data)) {
-				bravo_entry->content.size = 0;
-				bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
-				return ENOMEM;
-			} else {
-				bravo_entry->content.size = len;
-			}
+                        if (UNLIKELY(!bravo_entry->content.data)) {
+                                bravo_entry->content.size = 0;
+                                bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
+                                return ENOMEM;
+                        } else {
+                                bravo_entry->content.size = len;
+                        }
                 }
                 strcpy((char*)bravo_entry->content.data, msg_type);
                 memcpy(bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
@@ -900,24 +880,66 @@ FIX_Pusher::session_push(const size_t len,
         return get_flag(&error_);
 }
 
-void
-FIX_Pusher::start(const char * const local_cache)
+int
+FIX_Pusher::start(const char * const local_cache, 
+		  const char * const FIX_ver,
+		  int sink_fd)
 {
-        if (local_cache)
-                db_.set_db_path(local_cache);
+	if (get_flag(&started_))
+		return 1;
+
+	if (FIX_ver) {
+		if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
+			M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
+			goto out;
+		}
+		snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
+		FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
+	}
+	if (!FIX_start_bytes_[0]) {
+		M_ALERT("no FIX version specified");
+                goto out;
+        }
+		
+        if (0 <= sink_fd) {
+                if (0 <= sink_fd_)
+                        close(sink_fd_);
+		sink_fd_ = sink_fd;
+        }
+        if (0 > sink_fd_) {
+                M_ALERT("no sink file descriptor specified");
+                goto out;
+        }
+
+        if (local_cache) {
+                if (!db_.set_db_path(local_cache)) {
+			M_ALERT("could not set local database path");
+			goto out;
+		}
+	}
 
         set_flag(&pause_thread_, 0);
-
         while (!get_flag(&db_is_open_)) {
                 sched_yield();
         }
+
+	set_flag(&started_, 1);
+out:
+	return get_flag(&started_);
 }
 
-void
+int
 FIX_Pusher::stop(void)
 {
+	if (!get_flag(&started_))
+		return 1;
+
         set_flag(&pause_thread_, 1);
         while (get_flag(&db_is_open_)) {
                 sched_yield();
         }
+
+	set_flag(&started_, 0);
+
+	return !get_flag(&started_);
 }

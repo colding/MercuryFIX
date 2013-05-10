@@ -312,7 +312,7 @@ START_TEST(test_FIX_Pusher_create)
         int sink_fd = open("/dev/null", O_WRONLY);
 
         fail_unless(NULL != pusher, NULL);
-        fail_unless(true == pusher->init("FIX.4.2", sink_fd), NULL);
+        fail_unless(1 == pusher->init(), NULL);
 }
 END_TEST
 
@@ -325,7 +325,7 @@ START_TEST(test_FIX_Popper_create)
         int source_fd = open("/dev/null", O_WRONLY);
 
         fail_unless(NULL != popper, NULL);
-        fail_unless(true == popper->init("FIX.4.2", source_fd), NULL);
+        fail_unless(1 == popper->init("FIX.4.2", source_fd), NULL);
 }
 END_TEST
 
@@ -387,9 +387,9 @@ START_TEST(test_FIX_start_stop)
         remove(recv_db);
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(sent_db);
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(sent_db, "FIX.4.1", sockets[0]);
         popper->start(recv_db);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
@@ -404,7 +404,7 @@ START_TEST(test_FIX_start_stop)
         fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
 
         pusher->stop();
-        pusher->start(sent_db);
+        pusher->start(sent_db, NULL, -1);
         popper->stop();
         popper->start(recv_db);
 
@@ -437,9 +437,9 @@ START_TEST(test_FIX_send_and_recv_sequentially)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
@@ -468,9 +468,9 @@ START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         for (n = 0; n < 12; ++n) {
@@ -498,9 +498,9 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
@@ -574,9 +574,9 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
@@ -656,9 +656,9 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
 
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
@@ -689,9 +689,9 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
 
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         for (n = 0; n < 16; ++n) {
@@ -724,9 +724,9 @@ START_TEST(test_FIX_send_and_recv_eratically)
 
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         // push 0..2
@@ -797,7 +797,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
         popper->start(":memory:");
 
         send_len = 1024*10;
@@ -840,7 +840,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
         popper->start(":memory:");
 
         send_len = 1024*10;
@@ -872,9 +872,9 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(true == pusher->init("FIX.4.1", sockets[0]), NULL);
-        fail_unless(true == popper->init("FIX.4.1", sockets[1]), NULL);
-        pusher->start(":memory:");
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init("FIX.4.1", sockets[1]), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:");
 
         // first the message with the checksum error which should be (silently?) ignored

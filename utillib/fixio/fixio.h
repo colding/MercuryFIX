@@ -87,23 +87,12 @@ public:
          * Allocates and initializes private members. It may be called
          * repeatedly, but only from one thread.
          *
-         * FIX_ver must be in the format of "FIX.X.Y" or in the case
-         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
-         * be a valid value for tag 8, BeginString.
-         *
-         * If sink_fd if different from -1 it will be used as the new
-         * sink.
-         *
-         * The FIX_Pusher instance takes ownership of the sink_fd file
-         * descriptor.
-         *
          * This method calls stop(), but not start(). You must call
          * start().
          *
          * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        int init(const char * const FIX_ver,
-                 int sink_fd);
+        int init(void);
 
         /*
          * Pushes a FIX messages onto the outgoing stack.
@@ -136,8 +125,10 @@ public:
          * Starts the pushing of messages into the sink.
          * Only one thread must call this method.
          *
-         * local_cache: Path of local database caching sent messages.
-         * From the SQLite documentation:
+         * local_cache: Path of local database caching sent
+         * messages. local_cache is ignored if it is NULL.
+	 *
+	 * From the SQLite documentation:
          *
          *   If the filename is ":memory:", then a private, temporary
          *   in-memory database is created for the connection. This
@@ -153,15 +144,32 @@ public:
          *   temporary on-disk database will be created. This private
          *   database will be automatically deleted as soon as the
          *   database connection is closed.
+	 *
+         * FIX_ver must be in the format of "FIX.X.Y" or in the case
+         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
+         * be a valid value for tag 8, BeginString. FIX_ver will be
+         * ignored if it is NULL.
+         *
+         * If sink_fd is non-negative it will be used as the new
+         * sink. It is iognored otherwise.
+         *
+         * The FIX_Pusher instance takes ownership of the sink_fd file
+         * descriptor.
+         *
+         * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        void start(const char * const local_cache);
+        int start(const char * const local_cache, 
+		  const char * const FIX_ver,
+		  int sink_fd);
 
         /*
          * Stops the pushing of message into the sink.
          *
          * Only one thread must call this method.
+         *
+         * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        void stop(void);
+        int stop(void);
 
 private:
         /*
@@ -204,6 +212,7 @@ private:
         int error_;                         // errno from the pusher thread
         int pause_thread_;                  // pause pusher thread
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
+	int started_;                       // 1 (one) if started, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
 
         int sink_fd_; // the file descriptor of the socket sink
