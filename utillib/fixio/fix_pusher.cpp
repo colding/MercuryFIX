@@ -731,7 +731,7 @@ FIX_Pusher::FIX_Pusher(const char soh)
         args_ = NULL;
         db_is_open_ = 0;
         pause_thread_ = 1;
-	started_ = 0;
+        started_ = 0;
 }
 
 int
@@ -881,30 +881,35 @@ FIX_Pusher::session_push(const size_t len,
 }
 
 int
-FIX_Pusher::start(const char * const local_cache, 
-		  const char * const FIX_ver,
-		  int sink_fd)
+FIX_Pusher::start(const char * const local_cache,
+                  const char * const FIX_ver,
+                  int sink_fd)
 {
-	if (get_flag(&started_))
-		return 1;
-
-	if (FIX_ver) {
-		if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
-			M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
-			goto out;
+        if (get_flag(&started_)) {
+		if (local_cache || FIX_ver || (0 <= sink_fd)) {
+			M_ALERT("attempt to change settings while pusher is started");
+			return 0;
 		}
-		snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
-		FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
+                return 1;
 	}
-	if (!FIX_start_bytes_[0]) {
-		M_ALERT("no FIX version specified");
+
+        if (FIX_ver) {
+                if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {
+                        M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(FIX_start_bytes_));
+                        goto out;
+                }
+                snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
+                FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
+        }
+        if (!FIX_start_bytes_[0]) {
+                M_ALERT("no FIX version specified");
                 goto out;
         }
-		
+
         if (0 <= sink_fd) {
                 if (0 <= sink_fd_)
                         close(sink_fd_);
-		sink_fd_ = sink_fd;
+                sink_fd_ = sink_fd;
         }
         if (0 > sink_fd_) {
                 M_ALERT("no sink file descriptor specified");
@@ -913,33 +918,33 @@ FIX_Pusher::start(const char * const local_cache,
 
         if (local_cache) {
                 if (!db_.set_db_path(local_cache)) {
-			M_ALERT("could not set local database path");
-			goto out;
-		}
-	}
+                        M_ALERT("could not set local database path");
+                        goto out;
+                }
+        }
 
         set_flag(&pause_thread_, 0);
         while (!get_flag(&db_is_open_)) {
                 sched_yield();
         }
 
-	set_flag(&started_, 1);
+        set_flag(&started_, 1);
 out:
-	return get_flag(&started_);
+        return get_flag(&started_);
 }
 
 int
 FIX_Pusher::stop(void)
 {
-	if (!get_flag(&started_))
-		return 1;
+        if (!get_flag(&started_))
+                return 1;
 
         set_flag(&pause_thread_, 1);
         while (get_flag(&db_is_open_)) {
                 sched_yield();
         }
 
-	set_flag(&started_, 0);
+        set_flag(&started_, 0);
 
-	return !get_flag(&started_);
+        return !get_flag(&started_);
 }
