@@ -123,12 +123,11 @@ public:
 
         /*
          * Starts the pushing of messages into the sink.
-         * Only one thread must call this method.
          *
          * local_cache: Path of local database caching sent
          * messages. local_cache is ignored if it is NULL.
-	 *
-	 * From the SQLite documentation:
+         *
+         * From the SQLite documentation:
          *
          *   If the filename is ":memory:", then a private, temporary
          *   in-memory database is created for the connection. This
@@ -144,7 +143,7 @@ public:
          *   temporary on-disk database will be created. This private
          *   database will be automatically deleted as soon as the
          *   database connection is closed.
-	 *
+         *
          * FIX_ver must be in the format of "FIX.X.Y" or in the case
          * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
          * be a valid value for tag 8, BeginString. FIX_ver will be
@@ -158,9 +157,9 @@ public:
          *
          * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        int start(const char * const local_cache, 
-		  const char * const FIX_ver,
-		  int sink_fd);
+        int start(const char * const local_cache,
+                  const char * const FIX_ver,
+                  int sink_fd);
 
         /*
          * Stops the pushing of message into the sink.
@@ -207,12 +206,12 @@ private:
                         return *this;
                 };
 
-        char FIX_start_bytes_[16];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
+        char FIX_start_bytes_[32];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
         int FIX_start_bytes_length_;        // strlen of FIX version field
         int error_;                         // errno from the pusher thread
         int pause_thread_;                  // pause pusher thread
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
-	int started_;                       // 1 (one) if started, 0 (zero) if not
+        int started_;                       // 1 (one) if started, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
 
         int sink_fd_; // the file descriptor of the socket sink
@@ -247,23 +246,12 @@ public:
          * Allocates and initializes private members. It may be called
          * repeatedly, but only from one thread.
          *
-         * FIX_ver must be in the format of "FIX.X.Y" or in the case
-         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
-         * be a valid value for tag 8, BeginString.
-         *
-         * If source_fd if different from -1 it will be used as the
-         * new source.
-         *
-         * The FIX_Popper instance takes ownership of the source_fd
-         * file descriptor.
-         *
          * This method calls stop(), but not start(). You must call
          * start().
          *
          * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        int init(const char * const FIX_ver,
-                 int source_fd);
+        int init(void);
 
         /*
          * threadsafe - each pop will read one complete message from
@@ -317,11 +305,11 @@ public:
                          uint8_t **data);
 
         /*
-         * Starts the popping of message of the source.
-         * Only one thread must call this method.
+         * Starts the popping of messages off the source.
          *
-         * local_cache: Path of local database caching recieved
-         * messages.
+         * local_cache: Path of local database caching sent
+         * messages. local_cache is ignored if it is NULL.
+         *
          * From the SQLite documentation:
          *
          *   If the filename is ":memory:", then a private, temporary
@@ -338,15 +326,30 @@ public:
          *   temporary on-disk database will be created. This private
          *   database will be automatically deleted as soon as the
          *   database connection is closed.
+         *
+         * FIX_ver must be in the format of "FIX.X.Y" or in the case
+         * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
+         * be a valid value for tag 8, BeginString. FIX_ver will be
+         * ignored if it is NULL.
+         *
+         * If sink_fd is non-negative it will be used as the new
+         * sink. It is iognored otherwise.
+         *
+         * The FIX_Pusher instance takes ownership of the sink_fd file
+         * descriptor.
+         *
+         * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        void start(const char * const local_cache);
+        int start(const char * const local_cache,
+                  const char * const FIX_ver,
+                  int source_fd);
 
         /*
          * Stops the popping of message of the source.
          *
          * Only one thread must call this method.
          */
-        void stop(void);
+        int stop(void);
 
 private:
         /*
@@ -386,10 +389,12 @@ private:
 
         int source_fd_;
         char begin_string_[32];                        // 8="FIX ver"<SOH>9="
+        int begin_string_length_;                      // strlen of begin_string_
         int error_;                                    // errno from the sucker thread
         int pause_threads_;                            // pause sucker and splitter threads
         int db_is_open_;                               // 1 (one) if the database is open, 0 (zero) if not
         int sucker_is_running_;                        // 1 (one) if the sucker thread is running, 0 (zero) if not
+        int started_;                                  // 1 (one) if started, 0 (zero) if not
         struct sucker_thread_args_t *sucker_args_;     // parameters for the sucker thread
         struct splitter_thread_args_t *splitter_args_; // parameters for the splitter thread
         MsgDB db_;                                     // holding recieved messages

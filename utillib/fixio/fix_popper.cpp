@@ -160,7 +160,7 @@ struct splitter_thread_args_t {
         echo_io_t *echo;
         foxtrot_io_t *foxtrot;
         char *begin_string;
-        size_t begin_string_length;
+        int *begin_string_length;
         char soh;
 };
 
@@ -169,7 +169,7 @@ struct sucker_thread_args_t {
         int *pause_thread;
         int *sucker_is_running;
         int *error;
-        int source_fd;
+        int *source_fd;
         foxtrot_io_t *foxtrot;
 };
 
@@ -469,9 +469,9 @@ splitter_thread_func(void *arg)
                                                 continue;
                                         }
                                         bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
-                                        if (delta_entry->content.size < args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
+                                        if (delta_entry->content.size < *args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
-                                                delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
+                                                delta_entry->content.size = *args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
                                                 delta_entry->content.data = (uint8_t*)malloc(delta_entry->content.size);
                                                 if (!delta_entry->content.data) {
                                                         M_ALERT("no memory");
@@ -479,11 +479,11 @@ splitter_thread_func(void *arg)
                                                         continue;
                                                 }
                                         } else {
-                                                delta_entry->content.size = args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
+                                                delta_entry->content.size = *args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
                                         }
-                                        memcpy(delta_entry->content.data, args->begin_string, args->begin_string_length); // 8=FIX.X.Y<SOH>9=
-                                        memcpy(delta_entry->content.data + args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
-                                        offset = args->begin_string_length + strlen(length_str);
+                                        memcpy(delta_entry->content.data, args->begin_string, *args->begin_string_length); // 8=FIX.X.Y<SOH>9=
+                                        memcpy(delta_entry->content.data + *args->begin_string_length, length_str, strlen(length_str)); // <LENGTH>
+                                        offset = *args->begin_string_length + strlen(length_str);
                                         state = CopyingBody;
                                 case CopyingBody:
                                         if (entry_length - k >= bytes_left_to_copy) { // one memcpy enough
@@ -492,7 +492,7 @@ splitter_thread_func(void *arg)
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
                                                 if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
-                                                        msg_type = delta_entry->content.data + args->begin_string_length + strlen(length_str) + 4;
+                                                        msg_type = delta_entry->content.data + *args->begin_string_length + strlen(length_str) + 4;
                                                         msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
                                                         if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
                                                                 M_ALERT("wrong sequence number: %d != %d", msg_seq_number_recieved, msg_seq_number_expected);
@@ -573,7 +573,11 @@ sucker_thread_func(void *arg)
                 abort();
         }
 
-        if (!set_recv_timeout(args->source_fd, timeout)) {
+        // wait for start
+        while (get_flag(args->pause_thread))
+                sched_yield();
+
+        if (!set_recv_timeout(*args->source_fd, timeout)) {
                 M_ERROR("sucker thread cannot run (cannot set timeout)");
                 abort();
         }
@@ -596,7 +600,7 @@ sucker_thread_func(void *arg)
                 foxtrot_entry = foxtrot_ring_buffer_acquire_entry(args->foxtrot, &foxtrot_cursor);
                 buf = foxtrot_entry->content + sizeof(uint32_t);
         again:
-                rval = recvfrom(args->source_fd, buf, FOXTROT_MAX_DATA_SIZE, 0, NULL, NULL);
+                rval = recvfrom(*args->source_fd, buf, FOXTROT_MAX_DATA_SIZE, 0, NULL, NULL);
                 switch (rval) {
                 case 0:
                         M_ERROR("peer closed connection");
@@ -643,6 +647,7 @@ FIX_Popper::FIX_Popper(const char soh)
 {
         source_fd_ = -1;
         memset(begin_string_, '\0', sizeof(begin_string_));
+        begin_string_length_ = 0;
         error_ = 0;
         delta_ = NULL;
         echo_ = NULL;
@@ -652,32 +657,13 @@ FIX_Popper::FIX_Popper(const char soh)
         pause_threads_ = 1;
         db_is_open_ = 0;
         sucker_is_running_ = 0;
+        started_ = 0;
 }
 
 int
-FIX_Popper::init(const char * const FIX_ver, int source_fd)
+FIX_Popper::init(void)
 {
         stop();
-
-        if (sizeof(begin_string_) <= strlen(FIX_ver)) {
-                M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(begin_string_));
-                goto err;
-        }
-        if (!begin_string_[0] && !FIX_ver) {
-                M_ALERT("no FIX version specified");
-                goto err;
-        }
-        snprintf(begin_string_, sizeof(begin_string_), "8=%s%c9=", FIX_ver, soh_);
-
-        if (-1 != source_fd) {
-                if (source_fd_)
-                        close(source_fd_);
-                source_fd_ = source_fd;
-        }
-        if (-1 == source_fd_) {
-                M_ALERT("no source file descriptor specified");
-                goto err;
-        }
 
         if (!delta_) {
                 delta_ = delta_ring_buffer_malloc();
@@ -714,10 +700,6 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 foxtrot_ring_buffer_init(foxtrot_);
         }
 
-        // NOTE: We can't change the FIX version on the fly with this
-        // design. Maybe we should abolish the filter thread and let
-        // the sucker thread do the filtering? Anyways, that is for
-        // later...
         if (!splitter_args_) {
                 splitter_args_ = (splitter_thread_args_t*)malloc(sizeof(struct splitter_thread_args_t));
                 if (!splitter_args_) {
@@ -728,7 +710,7 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 splitter_args_->db_is_open = &db_is_open_;
                 splitter_args_->db = &db_;
                 splitter_args_->begin_string = begin_string_;
-                splitter_args_->begin_string_length = strlen(begin_string_);
+                splitter_args_->begin_string_length = &begin_string_length_;
                 splitter_args_->delta = delta_;
                 splitter_args_->echo = echo_;
                 splitter_args_->foxtrot = foxtrot_;
@@ -737,27 +719,27 @@ FIX_Popper::init(const char * const FIX_ver, int source_fd)
                 pthread_t splitter_thread_id;
                 if (!create_detached_thread(&splitter_thread_id, splitter_args_, splitter_thread_func)) {
                         M_ALERT("could not create filter thread");
-                        abort();
+                        goto err;
                 }
         }
 
         if (!sucker_args_) {
-		sucker_args_ = (sucker_thread_args_t*)malloc(sizeof(struct sucker_thread_args_t));
-		if (!sucker_args_) {
-			M_ALERT("no memory");
-			goto err;
-		}
-		sucker_args_->pause_thread = &pause_threads_;
-		sucker_args_->sucker_is_running = &sucker_is_running_;
-		sucker_args_->source_fd = source_fd_;
-		sucker_args_->error = &error_;
-		sucker_args_->foxtrot = foxtrot_;
+                sucker_args_ = (sucker_thread_args_t*)malloc(sizeof(struct sucker_thread_args_t));
+                if (!sucker_args_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                sucker_args_->pause_thread = &pause_threads_;
+                sucker_args_->sucker_is_running = &sucker_is_running_;
+                sucker_args_->source_fd = &source_fd_;
+                sucker_args_->error = &error_;
+                sucker_args_->foxtrot = foxtrot_;
 
-		pthread_t sucker_thread_id;
-		if (!create_detached_thread(&sucker_thread_id, sucker_args_, sucker_thread_func)) {
-			M_ALERT("could not create sucker thread");
-			abort();
-		}
+                pthread_t sucker_thread_id;
+                if (!create_detached_thread(&sucker_thread_id, sucker_args_, sucker_thread_func)) {
+                        M_ALERT("could not create sucker thread");
+                        goto err;
+                }
         }
 
         return 1;
@@ -832,33 +814,78 @@ FIX_Popper::session_pop(size_t * const len,
         *data = echo_entry->content + sizeof(uint32_t);
 }
 
-void
-FIX_Popper::start(const char * const local_cache)
+int
+FIX_Popper::start(const char * const local_cache,
+                  const char * const FIX_ver,
+                  int source_fd)
 {
-        if (local_cache)
-                db_.set_db_path(local_cache);
+        if (get_flag(&started_)) {
+		if (local_cache || FIX_ver || (0 <= source_fd)) {
+			M_ALERT("attempt to change settings while pusher is started");
+			return 0;
+		}
+                return 1;
+	}
+
+        if (FIX_ver) {
+                if (sizeof(begin_string_) <= strlen(FIX_ver)) {
+                        M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(begin_string_));
+                        goto out;
+                }
+                snprintf(begin_string_, sizeof(begin_string_), "8=%s%c9=", FIX_ver, soh_);
+                begin_string_length_ = strlen(begin_string_);
+        }
+        if (!begin_string_[0]) {
+                M_ALERT("no FIX version specified");
+                goto out;
+        }
+
+        if (0 <= source_fd) {
+                if (0 <= source_fd_)
+                        close(source_fd_);
+                source_fd_ = source_fd;
+                M_ALERT("setting source fd");
+        }
+        if (0 > source_fd_) {
+                M_ALERT("no source file descriptor specified");
+                goto out;
+        }
+
+        if (local_cache) {
+                if (!db_.set_db_path(local_cache)) {
+                        M_ALERT("could not set local database path");
+                        goto out;
+                }
+        }
 
         set_flag(&pause_threads_, 0);
-
         while (!get_flag(&db_is_open_)) {
                 sched_yield();
         }
-
         while (!get_flag(&sucker_is_running_)) {
                 sched_yield();
         }
+
+        set_flag(&started_, 1);
+out:
+        return get_flag(&started_);
 }
 
-void
+int
 FIX_Popper::stop(void)
 {
-        set_flag(&pause_threads_, 1);
+        if (!get_flag(&started_))
+                return 1;
 
+        set_flag(&pause_threads_, 1);
         while (get_flag(&db_is_open_)) {
                 sched_yield();
         }
-
         while (get_flag(&sucker_is_running_)) {
                 sched_yield();
         }
+
+        set_flag(&started_, 0);
+
+        return !get_flag(&started_);
 }
