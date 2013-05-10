@@ -886,12 +886,12 @@ FIX_Pusher::start(const char * const local_cache,
                   int sink_fd)
 {
         if (get_flag(&started_)) {
-		if (local_cache || FIX_ver || (0 <= sink_fd)) {
-			M_ALERT("attempt to change settings while pusher is started");
-			return 0;
-		}
+                if (local_cache || FIX_ver || (0 <= sink_fd)) {
+                        M_ALERT("attempt to change settings while pusher is started");
+                        return 0;
+                }
                 return 1;
-	}
+        }
 
         if (FIX_ver) {
                 if (sizeof(FIX_start_bytes_) <= strlen(FIX_ver)) {

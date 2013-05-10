@@ -563,7 +563,6 @@ sucker_thread_func(void *arg)
         void *buf;
         ssize_t rval;
         int entry_open = 0;
-        const timeout_t timeout = { 1 };
         struct cursor_t foxtrot_cursor;
         struct foxtrot_entry_t *foxtrot_entry = NULL;
 
@@ -576,11 +575,6 @@ sucker_thread_func(void *arg)
         // wait for start
         while (get_flag(args->pause_thread))
                 sched_yield();
-
-        if (!set_recv_timeout(*args->source_fd, timeout)) {
-                M_ERROR("sucker thread cannot run (cannot set timeout)");
-                abort();
-        }
 
         // pull data from source_fd onto foxtrot until told to stop
         set_flag(args->sucker_is_running, 1);
@@ -819,13 +813,15 @@ FIX_Popper::start(const char * const local_cache,
                   const char * const FIX_ver,
                   int source_fd)
 {
+        const timeout_t timeout = { 1 };
+
         if (get_flag(&started_)) {
-		if (local_cache || FIX_ver || (0 <= source_fd)) {
-			M_ALERT("attempt to change settings while pusher is started");
-			return 0;
-		}
+                if (local_cache || FIX_ver || (0 <= source_fd)) {
+                        M_ALERT("attempt to change settings while pusher is started");
+                        return 0;
+                }
                 return 1;
-	}
+        }
 
         if (FIX_ver) {
                 if (sizeof(begin_string_) <= strlen(FIX_ver)) {
@@ -844,6 +840,10 @@ FIX_Popper::start(const char * const local_cache,
                 if (0 <= source_fd_)
                         close(source_fd_);
                 source_fd_ = source_fd;
+                if (!set_recv_timeout(source_fd_, timeout)) {
+                        M_ERROR("sucker thread cannot run (cannot set timeout)");
+                        abort();
+                }
         }
         if (0 > source_fd_) {
                 M_ALERT("no source file descriptor specified");
