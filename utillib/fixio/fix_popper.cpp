@@ -769,9 +769,9 @@ FIX_Popper::pop(size_t * const len,
 }
 
 void
-FIX_Popper::pop(struct cursor_t * const cursor,
-                struct count_t * const reg_number,
-                std::queue<struct FIX_Popper::RawMessage> *messages)
+FIX_Popper::pop(const struct count_t * const reg_number,
+                struct cursor_t * const cursor,
+                std::queue<struct FIX_Popper::RawMessage> * const messages)
 {
         static const struct FIX_Popper::RawMessage msg = { 0 , NULL };
         struct delta_entry_t *entry;

@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <check.h>
 #include <fcntl.h>
+#include <queue>
 #include <new>
 
 #ifdef HAVE_CONFIG_H
@@ -417,7 +418,7 @@ START_TEST(test_FIX_start_stop)
         const char * const sent_db = "23E19F70-616C-4551-BB0E-2EF61EFB9474.sent";
         const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
 
-	int n;
+        int n;
         size_t len;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
@@ -577,6 +578,51 @@ START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
         }
+
+        pusher->stop();
+        popper->stop();
+}
+END_TEST
+
+/*
+ * Test send and recieve of test messages sequentially
+ */
+START_TEST(test_FIX_lockfree_sequentially)
+{
+        int n;
+        int size;
+        int cnt = 0;
+        struct cursor_t cursor;
+        struct count_t reg_number;
+        std::queue<struct FIX_Popper::RawMessage> messages;
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init(), NULL);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
+        popper->start(":memory:", "FIX.4.1", sockets[1]);
+
+        popper->register_popper(&cursor, &reg_number);
+
+        for (n = 0; n < 16; ++n) {
+                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+        }
+
+        do {
+                popper->pop(&reg_number, &cursor, &messages);
+                size = messages.size();
+                for (n = 0; n < size; ++n) {
+                        fail_unless(messages.front().len == strlen(complete_messages[cnt]), NULL);
+                        fail_unless(0 == memcmp(complete_messages[cnt], messages.front().data, messages.front().len), NULL);
+                        free(messages.front().data);
+                        ++cnt;
+                        messages.pop();
+                }
+        } while (cnt < 16);
+        popper->unregister_popper(&reg_number);
 
         pusher->stop();
         popper->stop();
@@ -1004,6 +1050,7 @@ fixio_suite(void)
         tcase_add_test(tc_core, test_FIX_change_version);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_messages_sequentially);
+        tcase_add_test(tc_core, test_FIX_lockfree_sequentially);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages_with_noise);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially_with_noise);

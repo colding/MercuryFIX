@@ -282,9 +282,9 @@ public:
          * by disruptor baching. They are ordered by the time they was
          * recieved. Caller must free RawMessage.data.
          */
-        void pop(struct cursor_t * const cursor,
-                 struct count_t * const reg_number,
-                 std::queue<struct FIX_Popper::RawMessage> *messages);
+        void pop(const struct count_t * const reg_number,
+                 struct cursor_t * const cursor,
+                 std::queue<struct FIX_Popper::RawMessage> * const messages);
 
         /*
          * Register state variables for above method. This method will
