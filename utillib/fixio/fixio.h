@@ -39,7 +39,10 @@
 
 #pragma once
 
+#include <pthread.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <queue>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
@@ -49,8 +52,6 @@
 #include "stdlib/locks/guard.h"
 #include "utillib/fixio/db_utils.h"
 
-#include <stdlib.h>
-#include <pthread.h>
 
 struct alfa_io_t;
 struct bravo_io_t;
@@ -237,6 +238,11 @@ private:
 class FIX_Popper
 {
 public:
+        struct RawMessage {
+                size_t len;
+                uint8_t *data;
+        };
+
         /*
          * Call this with SOH or whatever you want as delimiter for testing
          */
@@ -268,25 +274,30 @@ public:
         int pop(size_t * const len,
                 uint8_t **data);
 
-        /* DELETE?
-         *
-         * Same as above, but this method depends on each caller to
+        /*
+         * Same as above, but lockfree and depends on each caller to
          * maintain a cursor and a registration number.
          *
-         * Returns zero if all is well, non-zero if not.
+         * "*messages" is a bunch of recieved raw messages collected
+         * by disruptor baching. They are ordered by the time they was
+         * recieved. Caller must free RawMessage.data.
          */
-        int pop(struct cursor_t * const cursor,
-                struct count_t * const reg_number,
-                size_t * const len,
-                void **data);
+        void pop(struct cursor_t * const cursor,
+                 struct count_t * const reg_number,
+                 std::queue<struct FIX_Popper::RawMessage> *messages);
 
-        /* DELETE?
-         *
+        /*
          * Register state variables for above method. This method will
          * block until caller may start popping.
          */
         void register_popper(struct cursor_t * const cursor,
                              struct count_t * const reg_number);
+
+
+        /*
+         * Unregister a registered popper.
+         */
+        void unregister_popper(const struct count_t * const reg_number);
 
         /*
          * threadsafe - each pop will return a non-const pointer to a

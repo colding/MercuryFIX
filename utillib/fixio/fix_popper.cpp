@@ -184,20 +184,17 @@ struct sucker_thread_args_t {
   */
 
 /*
- * Delta) One publisher, many entry processors but we need to
- * serialize access to delta, so effectively we only have one. At
- * least for now. Alternatively we need poppers to maintain a
- * registration number and a counter themselves...
+ * Delta) One publisher, many entry processors.
  *
  * TODO: Test what the fastest approah is. I'll implement the
- * appropiate pop() method so that I'll have it ready when
+ * appropiate pop() methods so that we'll have it ready when
  * performance testing commences.
  *
  * sizeof(size_t)+sizeof(char*) entry size, 128 entries
  *
  */
 #define DELTA_QUEUE_LENGTH (128) // MUST be a power of two
-#define DELTA_ENTRY_PROCESSORS (16) // maybe more later
+#define DELTA_ENTRY_PROCESSORS (8) // maybe more later
 struct delta_t {
         size_t size;
         uint8_t *data;
@@ -745,7 +742,7 @@ int
 FIX_Popper::pop(size_t * const len,
                 uint8_t **data)
 {
-        const struct delta_entry_t *delta_entry;
+        struct delta_entry_t *delta_entry;
         struct cursor_t n;
 
         if (guard_.enter()) {
@@ -758,10 +755,12 @@ FIX_Popper::pop(size_t * const len,
                 delta_entry_processor_barrier_wait_for_blocking(delta_, &delta_cursor_upper_limit_);
                 __atomic_fetch_add(&delta_cursor_upper_limit_.sequence, 1, __ATOMIC_RELEASE);
         }
-        delta_entry = delta_ring_buffer_show_entry(delta_, &n);
+        delta_entry = delta_ring_buffer_acquire_entry(delta_, &n);
 
         *len = delta_entry->content.size;
         *data = delta_entry->content.data;
+        delta_entry->content.size = 0;
+        delta_entry->content.data = NULL;
         delta_entry_processor_barrier_release_entry(delta_, &delta_reg_number_, &n);
 
         guard_.leave();
@@ -769,19 +768,41 @@ FIX_Popper::pop(size_t * const len,
         return 0;
 }
 
-int
-FIX_Popper::pop(struct cursor_t * const /*cursor*/,
-                struct count_t * const /*reg_number*/,
-                size_t * const /*len*/,
-                void **/*data*/)
+void
+FIX_Popper::pop(struct cursor_t * const cursor,
+                struct count_t * const reg_number,
+                std::queue<struct FIX_Popper::RawMessage> *messages)
 {
-        return 0;
+        static const struct FIX_Popper::RawMessage msg = { 0 , NULL };
+        struct delta_entry_t *entry;
+        struct cursor_t n;
+        struct cursor_t cursor_upper_limit;
+
+        cursor_upper_limit.sequence = cursor->sequence;
+        delta_entry_processor_barrier_wait_for_blocking(delta_, &cursor_upper_limit);
+        for (n.sequence = cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) {
+                entry = delta_ring_buffer_acquire_entry(delta_, &n);
+                messages->push(msg);
+                messages->back().len = entry->content.size;
+                messages->back().data = entry->content.data;
+                entry->content.size = 0;
+                entry->content.data = NULL;
+        }
+        delta_entry_processor_barrier_release_entry(delta_, reg_number, &cursor_upper_limit);
+        cursor->sequence = ++cursor_upper_limit.sequence;
 }
 
 void
-FIX_Popper::register_popper(struct cursor_t * const /*cursor*/,
-                            struct count_t * const /*reg_number*/)
+FIX_Popper::register_popper(struct cursor_t * const cursor,
+                            struct count_t * const reg_number)
 {
+        cursor->sequence = delta_entry_processor_barrier_register(delta_, reg_number);
+}
+
+void
+FIX_Popper::unregister_popper(const struct count_t * const reg_number)
+{
+        delta_entry_processor_barrier_unregister(delta_, reg_number);
 }
 
 /*
