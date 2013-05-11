@@ -36,12 +36,4 @@ ResendRequests.
 The big TODOs
 =============
 
-* Cook up some code to let SQLite store and retrieve sent messages and
-  the latest recieved/sent sequence number.
-
-* Do something about the configuration classes. They are way too
-  complex.
-
-* Move to DB based configuration while I'm at it.
-
-* Make a reasonable session implementation
+Please see the issues list for my feature wish list.
