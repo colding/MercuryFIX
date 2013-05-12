@@ -636,6 +636,7 @@ FIX_Popper::FIX_Popper(const char soh)
           foxtrot_max_data_length_(FOXTROT_MAX_DATA_SIZE),
           soh_(soh)
 {
+        pusher_ = NULL;
         source_fd_ = -1;
         memset(begin_string_, '\0', sizeof(begin_string_));
         begin_string_length_ = 0;
@@ -832,9 +833,13 @@ FIX_Popper::session_pop(size_t * const len,
 int
 FIX_Popper::start(const char * const local_cache,
                   const char * const FIX_ver,
+                  FIX_PushBase * const pusher,
                   int source_fd)
 {
         const timeout_t timeout = { 1 };
+
+        if (pusher)
+                pusher_ = pusher;
 
         if (get_flag(&started_)) {
                 if (local_cache || FIX_ver || (0 <= source_fd)) {

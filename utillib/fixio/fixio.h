@@ -74,9 +74,42 @@ struct splitter_thread_args_t;
  */
 
 /*
+ * Service contract for the pusher class.
+ */
+class FIX_PushBase
+{
+        /*
+         * Pushes a FIX messages onto the outgoing stack.
+         *
+         * Must not contain tags:
+         *   8 (BeginString), 9 (BodyLength), 35 (MsgType), 34 (MsgSeqNum)
+         *
+         * But must end with:
+         *   <SOH>10=
+         *
+         * And must begin with:
+         *   <SOH>
+         *
+         * The mentioned tags will be added be the push function.
+         */
+        virtual int push(const size_t len,
+                         const uint8_t * const data,
+                         const char * const msg_type) = 0;
+
+        /*
+         * Please see FIX_Pusher::push() for the data format.
+         *
+         * Only one thread must call this method.
+         */
+        virtual int session_push(const size_t len,
+                                 const uint8_t * const data,
+                                 const char * const msg_type) = 0;
+};
+
+/*
  * Puts partial messages on the sending stack.
  */
-class FIX_Pusher
+class FIX_Pusher : public FIX_PushBase
 {
 public:
         /*
@@ -279,8 +312,8 @@ public:
          * maintain a cursor and a registration number.
          *
          * "*messages" is a bunch of recieved raw messages collected
-         * by disruptor baching. They are ordered by the time they was
-         * recieved. Caller must free RawMessage.data.
+         * by disruptor batching. They are ordered by recieval
+         * time. Caller must free RawMessage.data.
          */
         void pop(const struct count_t * const reg_number,
                  struct cursor_t * const cursor,
@@ -343,6 +376,11 @@ public:
          * be a valid value for tag 8, BeginString. FIX_ver will be
          * ignored if it is NULL.
          *
+         * pusher is used by the popper to respond to
+         * ResendRequests. The popper does not take ownership of the
+         * pusher. It will be ignored if it is NULL and overwrite any
+         * previous pointer if not.
+         *
          * If sink_fd is non-negative it will be used as the new
          * sink. It is iognored otherwise.
          *
@@ -353,6 +391,7 @@ public:
          */
         int start(const char * const local_cache,
                   const char * const FIX_ver,
+                  FIX_PushBase * const pusher,
                   int source_fd);
 
         /*
@@ -425,5 +464,6 @@ private:
         foxtrot_io_t *foxtrot_;
         const size_t foxtrot_max_data_length_;
 
+        FIX_PushBase *pusher_;
         const char soh_; // used to overwrite SOH ('\1') for testing
 };
