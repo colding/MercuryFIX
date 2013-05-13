@@ -247,6 +247,7 @@ private:
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
         int started_;                       // 1 (one) if started, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
+        MsgDB db_;                          // holding sent partial messages
 
         int sink_fd_; // the file descriptor of the socket sink
 
@@ -259,8 +260,6 @@ private:
         const size_t charlie_max_data_length_;
 
         const char soh_; // used to overwrite SOH ('\1') for testing
-
-        MsgDB db_; // holding sent partial messages
 };
 
 
