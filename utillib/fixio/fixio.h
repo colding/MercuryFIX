@@ -271,8 +271,9 @@ class FIX_Popper
 {
 public:
         struct RawMessage {
-                size_t len;
-                uint8_t *data;
+                uint32_t len;            // length of message in bytes
+                uint32_t msgtype_offset; // offset in bytes of first character in message type field
+                uint8_t *data;           // the FIX message itself
         };
 
         /*
@@ -301,9 +302,14 @@ public:
          * len is the total length of the message, not the value of
          * tag 9, BodyLength.
          *
+         * *msgtype_offset is the offset in bytes from the first byte
+         * in the message till the first character of the message
+         * type field.
+         *
          * Returns zero if all is well, non-zero if not.
          */
-        int pop(size_t * const len,
+        int pop(uint32_t * const len,
+                uint32_t * const msgtype_offset,
                 uint8_t **data);
 
         /*
@@ -339,12 +345,17 @@ public:
          * *len is the total length of the message, not the value of
          * tag 9, BodyLength.
          *
+         * *msgtype_offset is the offset in bytes from the first byte
+         * in the message till the first character of the message
+         * type field.
+         *
          * Only one thread must call this method.
          *
          * Return value is zero if all is well, or an errno value if
          * not.
          */
-        void session_pop(size_t * const len,
+        void session_pop(uint32_t * const len,
+                         uint32_t * const msgtype_offset,
                          uint8_t **data);
 
         /*

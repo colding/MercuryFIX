@@ -190,13 +190,14 @@ struct sucker_thread_args_t {
  * appropiate pop() methods so that we'll have it ready when
  * performance testing commences.
  *
- * sizeof(size_t)+sizeof(char*) entry size, 128 entries
+ * 2*sizeof(uint32_t)+sizeof(char*) entry size, 128 entries
  *
  */
 #define DELTA_QUEUE_LENGTH (128) // MUST be a power of two
 #define DELTA_ENTRY_PROCESSORS (8) // maybe more later
 struct delta_t {
-        size_t size;
+        uint32_t size;
+        uint32_t msgtype_offset;
         uint8_t *data;
 };
 
@@ -216,13 +217,14 @@ DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(delta_io_t, delta_);
 
 /*
  * Echo) One publisher, one entry processor, 512 byte entry size, 512
- * entries
+ * entries. First uint32_t is data size, next uint32_t is msgtype
+ * offset. then comes the message.
  *
  */
 #define ECHO_QUEUE_LENGTH (512) // MUST be a power of two
 #define ECHO_ENTRY_PROCESSORS (1)
 #define ECHO_ENTRY_SIZE (512)
-#define ECHO_MAX_DATA_SIZE (ECHO_ENTRY_SIZE - sizeof(uint32_t))
+#define ECHO_MAX_DATA_SIZE (ECHO_ENTRY_SIZE - (2 * sizeof(uint32_t)))
 typedef uint8_t echo_t[ECHO_ENTRY_SIZE];
 
 DEFINE_ENTRY_TYPE(echo_t, echo_entry_t);
@@ -501,13 +503,15 @@ splitter_thread_func(void *arg)
                                                                                 --msg_seq_number_expected;
                                                                         } else {
                                                                                 args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
-                                                                                setul(echo_entry->content, delta_entry->content.size);
-                                                                                memcpy(echo_entry->content + sizeof(uint32_t), delta_entry->content.data, delta_entry->content.size);
+                                                                                setul(echo_entry->content, delta_entry->content.size); // msg length
+                                                                                setul(echo_entry->content + sizeof(uint32_t), (uint32_t)(msg_type - delta_entry->content.data)); // msg type offset
+                                                                                memcpy(echo_entry->content + (2*sizeof(uint32_t)), delta_entry->content.data, delta_entry->content.size);
                                                                                 echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
                                                                                 echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
                                                                                 echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
                                                                         }
                                                                 } else {
+                                                                        delta_entry->content.msgtype_offset = (uint32_t)(msg_type - delta_entry->content.data);
                                                                         args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
                                                                         delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
                                                                         delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
@@ -740,7 +744,8 @@ err:
 }
 
 int
-FIX_Popper::pop(size_t * const len,
+FIX_Popper::pop(uint32_t * const len,
+                uint32_t * const msgtype_offset,
                 uint8_t **data)
 {
         struct delta_entry_t *delta_entry;
@@ -759,8 +764,10 @@ FIX_Popper::pop(size_t * const len,
         delta_entry = delta_ring_buffer_acquire_entry(delta_, &n);
 
         *len = delta_entry->content.size;
+        *msgtype_offset = delta_entry->content.msgtype_offset;
         *data = delta_entry->content.data;
         delta_entry->content.size = 0;
+        delta_entry->content.msgtype_offset = 0;
         delta_entry->content.data = NULL;
         delta_entry_processor_barrier_release_entry(delta_, &delta_reg_number_, &n);
 
@@ -774,7 +781,7 @@ FIX_Popper::pop(const struct count_t * const reg_number,
                 struct cursor_t * const cursor,
                 std::queue<struct FIX_Popper::RawMessage> * const messages)
 {
-        static const struct FIX_Popper::RawMessage msg = { 0 , NULL };
+        static const struct FIX_Popper::RawMessage msg = { 0 , 0, NULL };
         struct delta_entry_t *entry;
         struct cursor_t n;
         struct cursor_t cursor_upper_limit;
@@ -784,6 +791,7 @@ FIX_Popper::pop(const struct count_t * const reg_number,
         for (n.sequence = cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) {
                 entry = delta_ring_buffer_acquire_entry(delta_, &n);
                 messages->push(msg);
+                messages->back().msgtype_offset = entry->content.msgtype_offset;
                 messages->back().len = entry->content.size;
                 messages->back().data = entry->content.data;
                 entry->content.size = 0;
@@ -810,7 +818,8 @@ FIX_Popper::unregister_popper(const struct count_t * const reg_number)
  * Only called from a single thread, so no need to use atomic builtins
  */
 void
-FIX_Popper::session_pop(size_t * const len,
+FIX_Popper::session_pop(uint32_t * const len,
+                        uint32_t * const msgtype_offset,
                         uint8_t **data)
 {
         struct echo_entry_t *echo_entry;
@@ -827,7 +836,8 @@ FIX_Popper::session_pop(size_t * const len,
         echo_entry = echo_ring_buffer_acquire_entry(echo_, &n);
 
         *len = getul(echo_entry->content);
-        *data = echo_entry->content + sizeof(uint32_t);
+        *msgtype_offset = getul(echo_entry->content + sizeof(uint32_t));
+        *data = echo_entry->content + (2 * sizeof(uint32_t));
 }
 
 int

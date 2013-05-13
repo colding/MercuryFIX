@@ -419,7 +419,8 @@ START_TEST(test_FIX_start_stop)
         const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
 
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -435,13 +436,13 @@ START_TEST(test_FIX_start_stop)
         popper->start(recv_db, "FIX.4.1", NULL, sockets[1]);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
 
@@ -452,7 +453,7 @@ START_TEST(test_FIX_start_stop)
 
         for (n = 2; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -475,7 +476,8 @@ START_TEST(test_FIX_change_version)
         const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
 
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -491,13 +493,13 @@ START_TEST(test_FIX_change_version)
         popper->start(recv_db, "FIX.4.1", NULL, sockets[1]);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
 
@@ -509,7 +511,7 @@ START_TEST(test_FIX_change_version)
 
         for (n = 2; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages_FIX789[n]), (const uint8_t *)partial_messages_FIX789[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages_FIX789[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages_FIX789[n], msg, len), NULL);
                 free(msg);
@@ -529,7 +531,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_sequentially)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -543,7 +546,7 @@ START_TEST(test_FIX_send_and_recv_sequentially)
 
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -560,7 +563,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -574,7 +578,7 @@ START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
 
         for (n = 0; n < 12; ++n) {
                 fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
-                popper->session_pop(&len, &msg);
+                popper->session_pop(&len, &msgtype_offset, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
         }
@@ -635,7 +639,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -648,48 +653,48 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
         popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), (const uint8_t *)partial_session_messages[1], session_message_types[1]), NULL);
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[2]), (const uint8_t *)partial_messages[2], message_types[2]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[2]), NULL);
         fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), (const uint8_t *)partial_session_messages[3], session_message_types[3]), NULL);
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[3]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[4]), (const uint8_t *)partial_messages[4], message_types[4]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[4]), NULL);
         fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), (const uint8_t *)partial_session_messages[5], session_message_types[5]), NULL);
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[5]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
 
         for (n = 6; n < 12; ++n) {
                 fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
-                popper->session_pop(&len, &msg);
+                popper->session_pop(&len, &msgtype_offset, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
         }
 
         for (n = 12; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -711,7 +716,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -724,7 +730,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
@@ -732,7 +738,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[0], strlen(noise[0])), NULL);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[1]), (const uint8_t *)partial_session_messages[1], session_message_types[1]), NULL); // <== seen blocking on this line
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[1], msg, len), NULL);
 
@@ -741,25 +747,25 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
 
         fail_unless(0 == pusher->push(strlen(partial_messages[2]), (const uint8_t *)partial_messages[2], message_types[2]), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[3], strlen(noise[3])), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[2]), NULL);
         fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[3]), (const uint8_t *)partial_session_messages[3], session_message_types[3]), NULL);
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[3]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[3], msg, len), NULL);
 
         fail_unless(0 == pusher->push(strlen(partial_messages[4]), (const uint8_t *)partial_messages[4], message_types[4]), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[4]), NULL);
         fail_unless(0 == memcmp(complete_messages[4], msg, len), NULL);
         free(msg);
 
         fail_unless(0 == pusher->session_push(strlen(partial_session_messages[5]), (const uint8_t *)partial_session_messages[5], session_message_types[5]), NULL);
-        popper->session_pop(&len, &msg);
+        popper->session_pop(&len, &msgtype_offset, &msg);
         fail_unless(len == strlen(complete_session_messages[5]), NULL);
         fail_unless(0 == memcmp(complete_session_messages[5], msg, len), NULL);
 
@@ -767,14 +773,14 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL);
                 fail_unless(0 == pusher->session_push(strlen(partial_session_messages[n]), (const uint8_t *)partial_session_messages[n], session_message_types[n]), NULL);
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[12], strlen(noise[12])), NULL); // <== seen blocking on this line
-                popper->session_pop(&len, &msg);
+                popper->session_pop(&len, &msgtype_offset, &msg);
                 fail_unless(len == strlen(complete_session_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages[n], msg, len), NULL);
         }
 
         for (n = 12; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -792,7 +798,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -808,7 +815,7 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
         for (n = 0; n < 16; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)noise[n], strlen(noise[n])), NULL);
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -825,7 +832,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_in_bursts)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -843,7 +851,7 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
         }
 
         for (n = 0; n < 16; ++n) {
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -860,7 +868,8 @@ END_TEST
 START_TEST(test_FIX_send_and_recv_eratically)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t *msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -879,7 +888,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
         }
 
         // pop 0
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[0]), NULL);
         fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
         free(msg);
@@ -888,13 +897,13 @@ START_TEST(test_FIX_send_and_recv_eratically)
         fail_unless(0 == pusher->push(strlen(partial_messages[3]), (const uint8_t *)partial_messages[3], message_types[3]), NULL);
 
         // pop 1
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[1]), NULL);
         fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
         free(msg);
 
         // pop 2
-        fail_unless(0 == popper->pop(&len, &msg), NULL);
+        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
         fail_unless(len == strlen(complete_messages[2]), NULL);
         fail_unless(0 == memcmp(complete_messages[2], msg, len), NULL);
         free(msg);
@@ -906,7 +915,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
 
         // pop 3..15
         for (n = 3; n < 16; ++n) {
-                fail_unless(0 == popper->pop(&len, &msg), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
                 free(msg);
@@ -933,7 +942,8 @@ END_TEST
 START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
 {
         size_t send_len;
-        size_t recv_len;
+        uint32_t recv_len;
+        uint32_t msgtype_offset;
         uint8_t *send_msg;
         uint8_t *recv_msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
@@ -947,7 +957,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_overflow)
         send_msg = make_fix_message("B", "FIX.4.1", 1, &send_len);
 
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
-        fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
+        fail_unless(0 == popper->pop(&recv_len, &msgtype_offset, &recv_msg), NULL);
         fail_unless(send_len == recv_len, NULL);
         fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
 
@@ -974,7 +984,8 @@ END_TEST
 START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
 {
         size_t send_len;
-        size_t recv_len;
+        uint32_t recv_len;
+        uint32_t msgtype_offset;
         uint8_t *send_msg;
         uint8_t *recv_msg;
         char crap[16] = { 'H' };
@@ -990,7 +1001,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_with_crap)
 
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)crap, sizeof(crap)), NULL);
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)send_msg, send_len), NULL);
-        fail_unless(0 == popper->pop(&recv_len, &recv_msg), NULL);
+        fail_unless(0 == popper->pop(&recv_len, &msgtype_offset, &recv_msg), NULL);
         fail_unless(send_len == recv_len, NULL);
         fail_unless(0 == memcmp(send_msg, recv_msg, send_len), NULL);
 
@@ -1007,7 +1018,8 @@ END_TEST
 START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
 {
         int n;
-        size_t len;
+        uint32_t len;
+        uint32_t msgtype_offset;
         uint8_t*msg;
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
@@ -1023,7 +1035,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
         fail_unless(1 == send_all(sockets[0], (const uint8_t*)complete_session_messages_with_noise[0], strlen(complete_session_messages_with_noise[0])), NULL);
         for (n = 1; n < 9; ++n) {
                 fail_unless(1 == send_all(sockets[0], (const uint8_t*)complete_session_messages_with_noise[n], strlen(complete_session_messages_with_noise[n])), NULL);
-                popper->session_pop(&len, &msg);
+                popper->session_pop(&len, &msgtype_offset, &msg);
                 fail_unless(len == strlen(complete_session_messages_with_noise_cleaned[n]), NULL);
                 fail_unless(0 == memcmp(complete_session_messages_with_noise_cleaned[n], msg, len), NULL);
         }
