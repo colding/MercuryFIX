@@ -290,7 +290,7 @@ is_session_message(const char /*soh*/,
  *
  * "<SOH>34=134 hg utf<SOH>".
  *
- * I'm going to let this one pass for the sake of simpler code.
+ * I'm going to let that one pass for the sake of simpler code...
  */
 static inline uint64_t
 get_sequence_number(const char soh,

@@ -70,7 +70,7 @@ struct splitter_thread_args_t;
  * source/sink socket must be re-initialisable independently from the
  * disruptors themselves.
  *
- * Neither class can be copied or assigned.
+ * Neither class can be copied nor assigned.
  */
 
 /*
