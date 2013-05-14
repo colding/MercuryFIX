@@ -41,7 +41,7 @@ check_fixio_SOURCES = \
 check_fixio_CPPFLAGS = $(CHECK_CFLAGS)
 check_fixio_LDADD = \
 	$(CHECK_LIBS) \
-	$(MERCURY_top_dir)/utillib/fixio/libfixio.la \
+	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la \
 	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
 	$(MERCURY_top_dir)/stdlib/network/libnetwork.la \

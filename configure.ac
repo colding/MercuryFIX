@@ -487,12 +487,12 @@ AC_CONFIG_FILES([Makefile
                  utillib/Makefile
                  utillib/ipc/Makefile
                  utillib/config/Makefile
-                 utillib/fixio/Makefile
                  omslib/Makefile
     		 applib/Makefile
                  applib/base/Makefile
                  applib/fixlib/Makefile
                  applib/fixlib/session/Makefile
+                 applib/fixio/Makefile
  		 servers/Makefile
 		 servers/generic/Makefile
 		 servers/versatile/Makefile

@@ -147,8 +147,8 @@
 #include "stdlib/network/network.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
-#include "utillib/fixio/stack_utils.h"
-#include "utillib/fixio/fixio.h"
+#include "stack_utils.h"
+#include "fixio.h"
 
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.

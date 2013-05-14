@@ -146,8 +146,8 @@
 #include "stdlib/macros/macros.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
-#include "utillib/fixio/stack_utils.h"
-#include "utillib/fixio/fixio.h"
+#include "stack_utils.h"
+#include "fixio.h"
 
 /*
  * Reserved initial space for the tags 8, 9, 35 and 34 in the FIX standard

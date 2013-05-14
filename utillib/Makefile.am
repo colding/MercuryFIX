@@ -9,7 +9,7 @@
 # without any warranty.
 #
 
-SUBDIRS = ipc config fixio
+SUBDIRS = ipc config
 
 
 DISTCLEANFILES = $(BUILT_SOURCES) $(CLEAN_IN_FILES) Makefile
