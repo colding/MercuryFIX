@@ -10,6 +10,7 @@
 *.trs
 *.sent*
 *.recv*
+.DS_Store
 test_*
 TAGS
 Makefile
@@ -40,4 +41,7 @@ ar-lib
 versatile
 test-driver
 check_fixio
+check_fixmsg
+pagesize
+pagesize.h
 cscope*
