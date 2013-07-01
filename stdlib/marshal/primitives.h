@@ -8,21 +8,21 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *     (1) Redistributions of source code must retain the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer.
- * 
+ *
  *     (2) Redistributions in binary form must reproduce the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     (3) Neither the name of the copyright holder nor the names of
  *     its contributors may be used to endorse or promote products
  *     derived from this software without specific prior written
  *     permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -68,31 +68,76 @@
 
 #ifdef HAVE_LITTLE_ENDIAN
 static inline void
-setul(uint8_t * const buf,
-      const uint32_t val)
+setu64(uint8_t * const buf,
+       const uint64_t val)
+{
+        buf[0] = (val & 0xFF00000000000000) >> 56;
+        buf[1] = (val & 0x00FF000000000000) >> 48;
+        buf[2] = (val & 0x0000FF0000000000) >> 40;
+        buf[3] = (val & 0x000000FF00000000) >> 32;
+        buf[4] = (val & 0x00000000FF000000) >> 24;
+        buf[5] = (val & 0x0000000000FF0000) >> 16;
+        buf[6] = (val & 0x000000000000FF00) >> 8;
+        buf[7] =  val & 0x00000000000000FF;
+}
+
+static inline uint64_t
+getu64(const uint8_t * const buf)
+{
+        uint64_t retv = 0;
+        uint64_t tmp = buf[0];
+
+        retv |= tmp << 56;
+
+        tmp = buf[1];
+        retv |= tmp << 48;
+
+        tmp = buf[2];
+        retv |= tmp << 40;
+
+        tmp = buf[3];
+        retv |= tmp << 32;
+
+        tmp = buf[4];
+        retv |= tmp << 24;
+
+        tmp = buf[5];
+        retv |= tmp << 16;
+
+        tmp = buf[6];
+        retv |= tmp << 8;
+
+        retv |= buf[7];
+
+        return retv;
+}
+
+static inline void
+setu32(uint8_t * const buf,
+       const uint32_t val)
 {
         buf[0] = (val & 0xFF000000) >> 24;
         buf[1] = (val & 0x00FF0000) >> 16;
         buf[2] = (val & 0x0000FF00) >> 8;
-        buf[3] = val & 0x000000FF;
+        buf[3] =  val & 0x000000FF;
 }
 
 static inline uint32_t
-getul(const uint8_t * const buf)
+getu32(const uint8_t * const buf)
 {
         return ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]);
 }
 
 static inline void
-setus(uint8_t * const buf,
-      const uint16_t val)
+setu16(uint8_t * const buf,
+       const uint16_t val)
 {
         buf[0] = (val & 0xFF00) >> 8;
-        buf[1] = val & 0x00FF;
+        buf[1] =  val & 0x00FF;
 }
 
 static inline uint16_t
-getus(const uint8_t * const buf)
+getu16(const uint8_t * const buf)
 {
         return ((buf[0] << 8) | buf[1]);
 }
@@ -100,31 +145,76 @@ getus(const uint8_t * const buf)
 
 #ifdef HAVE_BIG_ENDIAN
 static inline void
-setul(uint8_t * const buf,
-      const uint32_t val)
+setu64(uint8_t * const buf,
+       const uint64_t val)
+{
+        buf[7] = (val & 0xFF00000000000000) >> 56;
+        buf[6] = (val & 0x00FF000000000000) >> 48;
+        buf[5] = (val & 0x0000FF0000000000) >> 40;
+        buf[4] = (val & 0x000000FF00000000) >> 32;
+        buf[3] = (val & 0x00000000FF000000) >> 24;
+        buf[2] = (val & 0x0000000000FF0000) >> 16;
+        buf[1] = (val & 0x000000000000FF00) >> 8;
+        buf[0] =  val & 0x00000000000000FF;
+}
+
+static inline uint64_t
+getu64(const uint8_t * const buf)
+{
+        uint64_t retv = 0;
+        uint64_t tmp = buf[7];
+
+        retv |= tmp << 56;
+
+        tmp = buf[6];
+        retv |= tmp << 48;
+
+        tmp = buf[5];
+        retv |= tmp << 40;
+
+        tmp = buf[4];
+        retv |= tmp << 32;
+
+        tmp = buf[3];
+        retv |= tmp << 24;
+
+        tmp = buf[2];
+        retv |= tmp << 16;
+
+        tmp = buf[1];
+        retv |= tmp << 8;
+
+        retv |= buf[0];
+
+        return retv;
+}
+
+static inline void
+setu32(uint8_t * const buf,
+       const uint32_t val)
 {
         buf[3] = (val & 0xFF000000) >> 24;
         buf[2] = (val & 0x00FF0000) >> 16;
         buf[1] = (val & 0x0000FF00) >> 8;
-        buf[0] = val & 0x000000FF;
+        buf[0] =  val & 0x000000FF;
 }
 
 static inline uint32_t
-getul(const uint8_t * const buf)
+getu32(const uint8_t * const buf)
 {
         return ((buf[3] << 24) | (buf[2] << 16) | (buf[1] << 8) | buf[0]);
 }
 
 static inline void
-setus(uint8_t * const buf,
-      const uint16_t val)
+setu16(uint8_t * const buf,
+       const uint16_t val)
 {
         buf[1] = (val & 0xFF00) >> 8;
         buf[0] = (val & 0x00FF);
 }
 
 static inline uint16_t
-getus(const uint8_t * const buf)
+getu16(const uint8_t * const buf)
 {
         return ((buf[1] << 8) | buf[0]);
 }

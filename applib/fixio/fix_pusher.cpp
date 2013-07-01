@@ -129,6 +129,8 @@
  * Charlie) One publisher, one entry processor, 512 byte entry size, 512 entries
  */
 
+#include "fixio.h"
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <errno.h>
@@ -139,7 +141,6 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
-#define YIELD() sched_yield()
 #include "stdlib/disruptor/disruptor.h"
 #include "stdlib/process/threads.h"
 #include "stdlib/marshal/primitives.h"
@@ -147,7 +148,6 @@
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
 #include "stack_utils.h"
-#include "fixio.h"
 
 /*
  * Reserved initial space for the tags 8, 9, 35 and 34 in the FIX standard
@@ -269,8 +269,8 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(alfa_io_t, alfa_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(alfa_io_t, alfa_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(alfa_io_t, alfa_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
 
 /*
  * Bravo) Many publishers, one entry processor,
@@ -294,8 +294,8 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(bravo_io_t, bravo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(bravo_io_t, bravo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(bravo_io_t, bravo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
 
 /*
  * Charlie) One publisher, one entry processor, 512 byte entry size,
@@ -319,8 +319,8 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 
 static int
 do_writev(int fd,
@@ -486,7 +486,7 @@ push_alfa(struct cursor_t * const alfa_cursor,
                 total = 0;
                 for (n.sequence = alfa_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         alfa_entry = alfa_ring_buffer_acquire_entry(args->alfa, &n);
-                        vdata[idx].iov_len = getul(alfa_entry->content); // length of partial message
+                        vdata[idx].iov_len = getu32(alfa_entry->content); // length of partial message
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, alfa_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
@@ -579,7 +579,7 @@ push_charlie(struct cursor_t * const charlie_cursor,
                 total = 0;
                 for (n.sequence = charlie_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         charlie_entry = charlie_ring_buffer_acquire_entry(args->charlie, &n);
-                        vdata[idx].iov_len = getul(charlie_entry->content);
+                        vdata[idx].iov_len = getu32(charlie_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, charlie_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
@@ -651,7 +651,7 @@ pusher_thread_func(void *arg)
         // sent.
         if (!args->db->get_latest_sent_seqnum(msg_seq_number)) {
                 M_ALERT("error getting latest sent sequence number");
-		free(vdata);
+                free(vdata);
                 return NULL;
         }
 
@@ -813,16 +813,16 @@ FIX_Pusher::push(const size_t len,
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
-                alfa_publisher_port_next_entry_blocking(alfa_, &alfa_cursor);
+                alfa_publisher_next_entry_blocking(alfa_, &alfa_cursor);
                 alfa_entry = alfa_ring_buffer_acquire_entry(alfa_, &alfa_cursor);
 
-                setul(alfa_entry->content, len);
+                setu32(alfa_entry->content, len);
                 strcpy((char*)alfa_entry->content + sizeof(uint32_t), msg_type);
                 memcpy(alfa_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                alfa_publisher_port_commit_entry_blocking(alfa_, &alfa_cursor);
+                alfa_publisher_commit_entry_blocking(alfa_, &alfa_cursor);
         } else {
-                bravo_publisher_port_next_entry_blocking(bravo_, &bravo_cursor);
+                bravo_publisher_next_entry_blocking(bravo_, &bravo_cursor);
                 bravo_entry = bravo_ring_buffer_acquire_entry(bravo_, &bravo_cursor);
 
                 // either the first time and therefore NULL or
@@ -837,7 +837,7 @@ FIX_Pusher::push(const size_t len,
                         bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
                         if (UNLIKELY(!bravo_entry->content.data)) {
                                 bravo_entry->content.size = 0;
-                                bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
+                                bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
                                 return ENOMEM;
                         } else {
                                 bravo_entry->content.size = len;
@@ -846,12 +846,15 @@ FIX_Pusher::push(const size_t len,
                 strcpy((char*)bravo_entry->content.data, msg_type);
                 memcpy(bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                bravo_publisher_port_commit_entry_blocking(bravo_, &bravo_cursor);
+                bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
         }
 
         return get_flag(&error_);
 }
 
+/*
+ * Only called from one thread
+ */
 int
 FIX_Pusher::session_push(const size_t len,
                          const uint8_t * const data,
@@ -868,14 +871,14 @@ FIX_Pusher::session_push(const size_t len,
         if (UNLIKELY(len > (charlie_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
                 M_CRITICAL("session message oversized");
         } else {
-                charlie_publisher_port_next_entry_blocking(charlie_, &charlie_cursor);
+                charlie_publisher_next_entry_blocking(charlie_, &charlie_cursor);
                 charlie_entry = charlie_ring_buffer_acquire_entry(charlie_, &charlie_cursor);
 
-                setul(charlie_entry->content, len);
+                setu32(charlie_entry->content, len);
                 strcpy((char*)charlie_entry->content + sizeof(uint32_t), msg_type);
                 memcpy(charlie_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
 
-                charlie_publisher_port_commit_entry_blocking(charlie_, &charlie_cursor);
+                charlie_publisher_commit_entry_blocking(charlie_, &charlie_cursor);
         }
 
         return get_flag(&error_);

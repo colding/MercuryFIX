@@ -46,13 +46,13 @@
 static inline void
 set_flag(int *flag, int val)
 {
-        __atomic_store_n(flag, val, __ATOMIC_SEQ_CST);
+        __atomic_store_n(flag, val, __ATOMIC_RELAXED);
 }
 
 static inline int
 get_flag(int *flag)
 {
-        return __atomic_load_n(flag, __ATOMIC_SEQ_CST);
+        return __atomic_load_n(flag, __ATOMIC_RELAXED);
 }
 
 /*

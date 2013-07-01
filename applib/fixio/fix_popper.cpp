@@ -129,6 +129,8 @@
  * Foxtrot) One publisher, one entry processor, 8K entry size, 512 entries
  */
 
+#include "fixio.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
@@ -139,7 +141,6 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
-#define YIELD() sched_yield()
 #include "stdlib/disruptor/disruptor.h"
 #include "stdlib/process/threads.h"
 #include "stdlib/marshal/primitives.h"
@@ -147,8 +148,8 @@
 #include "stdlib/network/network.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
+#include "applib/fixmsg/fix_types.h"
 #include "stack_utils.h"
-#include "fixio.h"
 
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.
@@ -181,7 +182,7 @@ struct sucker_thread_args_t {
  * - delta holds a complete non-session message per entry
  *
  * - echo holds a complete session message per entry
-  */
+ */
 
 /*
  * Delta) One publisher, many entry processors.
@@ -212,8 +213,8 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(delta_io_t, delta_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(delta_io_t, delta_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(delta_io_t, delta_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(delta_io_t, delta_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(delta_io_t, delta_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(delta_io_t, delta_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(delta_io_t, delta_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(delta_io_t, delta_);
 
 /*
  * Echo) One publisher, one entry processor, 512 byte entry size, 512
@@ -238,8 +239,8 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(echo_io_t, echo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(echo_io_t, echo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(echo_io_t, echo_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(echo_io_t, echo_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(echo_io_t, echo_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(echo_io_t, echo_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(echo_io_t, echo_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(echo_io_t, echo_);
 
 /*
  * Foxtrot) One publisher, one entry processor, 4K entry size, 1024
@@ -263,27 +264,13 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(foxtrot_io_t, foxtrot_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
-DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_NONBLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
-DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_NONBLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(foxtrot_io_t, foxtrot_);
 
 /*********************
  *      FIX_Pusher
  *********************/
-
-/*
- * msg_type is terminated with soh, not zero as normal c-strings
- */
-static inline int
-is_session_message(const char /*soh*/,
-                   const uint8_t * const msg_type)
-{
-        if ((uint8_t)'0' == *msg_type) {
-                return 1;
-        }
-
-        return 0;
-}
 
 /*
  * This will actually accept sequence numbers in the form of:
@@ -392,9 +379,9 @@ splitter_thread_func(void *arg)
         cursor_upper_limit.sequence = foxtrot_cursor.sequence;
 
         // acquire publisher entries
-        delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
+        delta_publisher_next_entry_blocking(args->delta, &delta_cursor);
         delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-        echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
+        echo_publisher_next_entry_blocking(args->echo, &echo_cursor);
         echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
 
         // filter available data to echo and delta forever and ever
@@ -426,7 +413,7 @@ splitter_thread_func(void *arg)
                 for (n.sequence = foxtrot_cursor.sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         foxtrot_entry = foxtrot_ring_buffer_show_entry(args->foxtrot, &n);
 
-                        entry_length = getul(foxtrot_entry->content);
+                        entry_length = getu32(foxtrot_entry->content);
                         for (k = 0; k < entry_length; ++k) {
                                 switch (state) {
                                 case FindingBeginString:
@@ -490,35 +477,45 @@ splitter_thread_func(void *arg)
                                                        foxtrot_entry->content + sizeof(uint32_t) + k,
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
-                                                if (!memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) { // validate checksum
-                                                        msg_type = delta_entry->content.data + *args->begin_string_length + strlen(length_str) + 4;
-                                                        msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
-                                                        if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
-                                                                M_ALERT("wrong sequence number: %d != %d", msg_seq_number_recieved, msg_seq_number_expected);
-                                                                --msg_seq_number_expected;
-                                                        } else {
-                                                                if (is_session_message(args->soh, msg_type)) {
-                                                                        if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
-                                                                                M_ALERT("oversized session message");
-                                                                                --msg_seq_number_expected;
-                                                                        } else {
-                                                                                args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
-                                                                                setul(echo_entry->content, delta_entry->content.size); // msg length
-                                                                                setul(echo_entry->content + sizeof(uint32_t), (uint32_t)(msg_type - delta_entry->content.data)); // msg type offset
-                                                                                memcpy(echo_entry->content + (2*sizeof(uint32_t)), delta_entry->content.data, delta_entry->content.size);
-                                                                                echo_publisher_port_commit_entry_blocking(args->echo, &echo_cursor);
-                                                                                echo_publisher_port_next_entry_blocking(args->echo, &echo_cursor);
-                                                                                echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-                                                                        }
-                                                                } else {
-                                                                        delta_entry->content.msgtype_offset = (uint32_t)(msg_type - delta_entry->content.data);
-                                                                        args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
-                                                                        delta_publisher_port_commit_entry_blocking(args->delta, &delta_cursor);
-                                                                        delta_publisher_port_next_entry_blocking(args->delta, &delta_cursor);
-                                                                        delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
-                                                                }
-                                                        }
+                                                if (memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) // validate checksum
+                                                        goto go_on;
+
+                                                msg_type = delta_entry->content.data + *args->begin_string_length + strlen(length_str) + 4;
+                                                if (args->soh == *msg_type) {
+                                                        M_ALERT("malformed message type value");
+                                                        goto go_on;
                                                 }
+
+                                                msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
+                                                if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
+                                                        M_ALERT("wrong sequence number: %d != %d", msg_seq_number_recieved, msg_seq_number_expected);
+                                                        --msg_seq_number_expected;
+                                                        goto go_on;
+                                                }
+
+                                                if (is_session_message(args->soh, (const char*)msg_type)) {
+                                                        if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
+                                                                M_ALERT("oversized session message");
+                                                                --msg_seq_number_expected;
+                                                                goto go_on;
+                                                        }
+                                                        args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
+                                                        setu32(echo_entry->content, delta_entry->content.size); // msg length
+                                                        setu32(echo_entry->content + sizeof(uint32_t), (uint32_t)(msg_type - delta_entry->content.data)); // msg type offset
+                                                        memcpy(echo_entry->content + (2*sizeof(uint32_t)), delta_entry->content.data, delta_entry->content.size);
+
+                                                        echo_publisher_commit_entry_blocking(args->echo, &echo_cursor);
+                                                        echo_publisher_next_entry_blocking(args->echo, &echo_cursor);
+                                                        echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
+                                                } else {
+                                                        delta_entry->content.msgtype_offset = (uint32_t)(msg_type - delta_entry->content.data);
+                                                        args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
+
+                                                        delta_publisher_commit_entry_blocking(args->delta, &delta_cursor);
+                                                        delta_publisher_next_entry_blocking(args->delta, &delta_cursor);
+                                                        delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+                                                }
+                                        go_on:
                                                 state = FindingBeginString;
                                                 k += bytes_left_to_copy - 1;
                                         } else {
@@ -588,7 +585,7 @@ sucker_thread_func(void *arg)
                         set_flag(args->sucker_is_running, 1);
                 }
 
-                if (!foxtrot_publisher_port_next_entry_nonblocking(args->foxtrot, &foxtrot_cursor))
+                if (!foxtrot_publisher_next_entry_nonblocking(args->foxtrot, &foxtrot_cursor))
                         continue;
 
                 entry_open = 1;
@@ -619,16 +616,16 @@ sucker_thread_func(void *arg)
                                 goto out;
                         }
                 default:
-                        setul(foxtrot_entry->content, rval);
+                        setu32(foxtrot_entry->content, rval);
                         break;
                 }
-                foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+                foxtrot_publisher_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
                 entry_open = 0;
         } while (1);
 out:
         if (entry_open) {
-                setul(foxtrot_entry->content, 0);
-                foxtrot_publisher_port_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
+                setu32(foxtrot_entry->content, 0);
+                foxtrot_publisher_commit_entry_blocking(args->foxtrot, &foxtrot_cursor);
         }
 
         return NULL;
@@ -815,7 +812,7 @@ FIX_Popper::unregister_popper(const struct count_t * const reg_number)
 }
 
 /*
- * Only called from a single thread, so no need to use atomic builtins
+ * Only called from a single thread
  */
 void
 FIX_Popper::session_pop(uint32_t * const len,
@@ -835,8 +832,8 @@ FIX_Popper::session_pop(uint32_t * const len,
         }
         echo_entry = echo_ring_buffer_acquire_entry(echo_, &n);
 
-        *len = getul(echo_entry->content);
-        *msgtype_offset = getul(echo_entry->content + sizeof(uint32_t));
+        *len = getu32(echo_entry->content);
+        *msgtype_offset = getu32(echo_entry->content + sizeof(uint32_t));
         *data = echo_entry->content + (2 * sizeof(uint32_t));
 }
 

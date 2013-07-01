@@ -43,25 +43,37 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include "pagesize.h"
 #include "disruptor_types.h"
-
-#ifndef YIELD
-    #define VOLATILE volatile
-    #define YIELD() {}
-#else
-    #define VOLATILE
-#endif
 
 /*
  * Hints to the compiler whether an expression is likely to be true or
  * not
  */
+#ifdef LIKELY__
+#undef LIKELY__
+#endif
 #define LIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 1))
+
+#ifdef UNLIKELY__
+#undef UNLIKELY__
+#endif
 #define UNLIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 0))
+
+/*
+ * Cacheline padded timeout value.
+ * Not intended for use elsewhere.
+ */
+struct yield_t__ {
+        struct timespec timeout;
+        uint8_t padding[(CACHE_LINE_SIZE > sizeof(struct timespec)) ? (CACHE_LINE_SIZE - sizeof(struct timespec)) : (sizeof(struct timespec) % CACHE_LINE_SIZE)];
+} __attribute__((aligned(CACHE_LINE_SIZE)));
+static const struct yield_t__ timeout__ = { {0, 1}, { 0 } };
 
 /*
  * An entry processor cursor spot that has this value is not used and
@@ -70,31 +82,12 @@
 #define VACANT__ (UINT_FAST64_MAX)
 
 /*
- * Will return k iff k is a power of two, or the next power of two
- * which is greater than k.
- */
-static size_t
-next_power_of_two(size_t k)
-{
-        size_t i;
-
-        if (!k)
-                return 1;
-
-        --k;
-        for (i = 1; i < sizeof(size_t)*CHAR_BIT; i <<= 1)
-                k = k | k >> i;
-
-        return ++k;
-}
-
-/*
  * Cacheline padded elements of ring.
  */
-#define DEFINE_ENTRY_TYPE(content_type__, entry_type_name__)                                                            \
-    struct entry_type_name__ {                                                                                          \
-            content_type__ content;                                                                                     \
-            uint8_t padding[(CACHE_LINE_SIZE > sizeof(content_type__)) ? CACHE_LINE_SIZE - sizeof(content_type__) : 0]; \
+#define DEFINE_ENTRY_TYPE(content_type__, entry_type_name__)                                                                                                      \
+    struct entry_type_name__ {                                                                                                                                    \
+            content_type__ content;                                                                                                                               \
+            uint8_t padding[(CACHE_LINE_SIZE > sizeof(content_type__)) ? (CACHE_LINE_SIZE - sizeof(content_type__)) : (sizeof(uint_fast64_t) % CACHE_LINE_SIZE)]; \
     } __attribute__((aligned(CACHE_LINE_SIZE)))
 
 /*
@@ -109,12 +102,12 @@ next_power_of_two(size_t k)
 #define DEFINE_RING_BUFFER_TYPE(entry_processor_capacity__, entry_capacity__, entry_type_name__, ring_buffer_type_name__) \
     struct ring_buffer_type_name__ {                                                                                      \
             struct count_t reduced_size;                                                                                  \
-            VOLATILE struct cursor_t slowest_entry_processor;                                                             \
-            VOLATILE struct cursor_t max_read_cursor;                                                                     \
-            VOLATILE struct cursor_t write_cursor;                                                                        \
-            VOLATILE struct cursor_t entry_processor_cursors[entry_processor_capacity__];                                 \
+            struct cursor_t slowest_entry_processor;                                                                      \
+            struct cursor_t max_read_cursor;                                                                              \
+            struct cursor_t write_cursor;                                                                                 \
+            struct cursor_t entry_processor_cursors[entry_processor_capacity__];                                          \
             struct entry_type_name__ buffer[entry_capacity__];                                                            \
-    }
+    } __attribute__((aligned(PAGE_SIZE)))
 
 /*
  * This function returns a properly aligned ring buffer or NULL.
@@ -124,9 +117,8 @@ static struct ring_buffer_type_name__ *                                         
 ring_buffer_prefix__ ## ring_buffer_malloc(void)                                                                 \
 {                                                                                                                \
         struct ring_buffer_type_name__ *retv = NULL;                                                             \
-        const size_t alignment = next_power_of_two(CACHE_LINE_SIZE);                                             \
                                                                                                                  \
-        return (posix_memalign((void**)&retv, alignment, sizeof(struct ring_buffer_type_name__)) ? NULL : retv); \
+        return (posix_memalign((void**)&retv, PAGE_SIZE, sizeof(struct ring_buffer_type_name__)) ? NULL : retv); \
 }
 
 /*
@@ -240,12 +232,12 @@ static inline void                                                              
 ring_buffer_prefix__ ## entry_processor_barrier_wait_for_blocking(const struct ring_buffer_type_name__ * const ring_buffer,   \
                                                                   struct cursor_t * const cursor)                             \
 {                                                                                                                             \
-        struct cursor_t seq;                                                                                                  \
+        const struct cursor_t incur = { cursor->sequence, { 0 } };                                                            \
                                                                                                                               \
-        while (cursor->sequence > (seq.sequence = __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE))) \
-                YIELD();                                                                                                      \
+        while (incur.sequence > __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_RELAXED))                    \
+                nanosleep(&timeout__.timeout, NULL);                                                                          \
                                                                                                                               \
-        cursor->sequence = seq.sequence;                                                                                      \
+        cursor->sequence = __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE);                         \
 }
 
 /*
@@ -258,12 +250,12 @@ static inline int                                                               
 ring_buffer_prefix__ ## entry_processor_barrier_wait_for_nonblocking(const struct ring_buffer_type_name__ * const ring_buffer, \
                                                                      struct cursor_t * const cursor)                           \
 {                                                                                                                              \
-        struct cursor_t seq;                                                                                                   \
+        const struct cursor_t incur = { cursor->sequence, { 0 } };                                                             \
                                                                                                                                \
-        if (cursor->sequence > (seq.sequence = __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE)))     \
+        while (incur.sequence > __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_RELAXED))                     \
                 return 0;                                                                                                      \
                                                                                                                                \
-        cursor->sequence = seq.sequence;                                                                                       \
+        cursor->sequence = __atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE);                          \
                                                                                                                                \
         return 1;                                                                                                              \
 }
@@ -278,7 +270,7 @@ ring_buffer_prefix__ ## entry_processor_barrier_release_entry(struct ring_buffer
                                                               const struct count_t * const entry_processor_number,                           \
                                                               const struct cursor_t * const cursor)                                          \
 {                                                                                                                                            \
-        __atomic_store_n(&ring_buffer->entry_processor_cursors[entry_processor_number->count].sequence, cursor->sequence, __ATOMIC_RELEASE); \
+        __atomic_store_n(&ring_buffer->entry_processor_cursors[entry_processor_number->count].sequence, cursor->sequence, __ATOMIC_RELAXED); \
 }
 
 /*
@@ -290,81 +282,78 @@ ring_buffer_prefix__ ## entry_processor_barrier_release_entry(struct ring_buffer
  * It is actually faster (at least on my machine) to do "x = 1 +
  * fetch_add(, 1)" instead of "x = add_fetch(, 1)".
  */
-#define DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_BLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)             \
-static inline __attribute__((always_inline)) void                                                                            \
-ring_buffer_prefix__ ## publisher_port_next_entry_blocking(struct ring_buffer_type_name__ * const ring_buffer,               \
-                                                           struct cursor_t * const cursor)                                   \
-{                                                                                                                            \
-        unsigned int n;                                                                                                      \
-        struct cursor_t seq;                                                                                                 \
-        struct cursor_t slowest_reader;                                                                                      \
-                                                                                                                             \
-        cursor->sequence = 1 + __atomic_fetch_add(&ring_buffer->write_cursor.sequence, 1, __ATOMIC_RELEASE);                 \
-        do {                                                                                                                 \
-                slowest_reader.sequence = VACANT__;                                                                          \
-                for (n = 0; n < sizeof(ring_buffer->entry_processor_cursors)/sizeof(struct cursor_t); ++n) {                 \
-                        seq.sequence = __atomic_load_n(&ring_buffer->entry_processor_cursors[n].sequence, __ATOMIC_ACQUIRE); \
-                        if (seq.sequence < slowest_reader.sequence)                                                          \
-                                slowest_reader.sequence = seq.sequence;                                                      \
-                }                                                                                                            \
-                if (UNLIKELY__(VACANT__ == slowest_reader.sequence))                                                         \
-                        slowest_reader.sequence = cursor->sequence - (ring_buffer->reduced_size.count & cursor->sequence);   \
-                __atomic_store_n(&ring_buffer->slowest_entry_processor.sequence, slowest_reader.sequence, __ATOMIC_RELEASE); \
-                if (LIKELY__((cursor->sequence - slowest_reader.sequence) <= ring_buffer->reduced_size.count))               \
-                        return;                                                                                              \
-                YIELD();                                                                                                     \
-        } while (1);                                                                                                         \
+#define DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)                       \
+static inline __attribute__((always_inline)) void                                                                                  \
+ring_buffer_prefix__ ## publisher_next_entry_blocking(struct ring_buffer_type_name__ * const ring_buffer,                          \
+                                                           struct cursor_t * const cursor)                                         \
+{                                                                                                                                  \
+        unsigned int n;                                                                                                            \
+        struct cursor_t seq;                                                                                                       \
+        struct cursor_t slowest_reader;                                                                                            \
+        const struct cursor_t incur = { 1 + __atomic_fetch_add(&ring_buffer->write_cursor.sequence, 1, __ATOMIC_RELAXED), { 0 } }; \
+                                                                                                                                   \
+        cursor->sequence = incur.sequence;                                                                                         \
+        do {                                                                                                                       \
+                slowest_reader.sequence = VACANT__;                                                                                \
+                for (n = 0; n < sizeof(ring_buffer->entry_processor_cursors)/sizeof(struct cursor_t); ++n) {                       \
+                        seq.sequence = __atomic_load_n(&ring_buffer->entry_processor_cursors[n].sequence, __ATOMIC_RELAXED);       \
+                        if (seq.sequence < slowest_reader.sequence)                                                                \
+                                slowest_reader.sequence = seq.sequence;                                                            \
+                }                                                                                                                  \
+                if (UNLIKELY__(VACANT__ == slowest_reader.sequence))                                                               \
+                        slowest_reader.sequence = incur.sequence - (ring_buffer->reduced_size.count & incur.sequence);             \
+                __atomic_store_n(&ring_buffer->slowest_entry_processor.sequence, slowest_reader.sequence, __ATOMIC_RELAXED);       \
+                if (LIKELY__((incur.sequence - slowest_reader.sequence) <= ring_buffer->reduced_size.count))                       \
+                        return;                                                                                                    \
+                nanosleep(&timeout__.timeout, NULL);                                                                               \
+        } while (1);                                                                                                               \
 }
 
 /*
- * Entry Publishers must call this function to get an entry to write
- * into.  I have found that __ATOMIC_ACQUIRE (in the __atomic_load_n)
- * is actually faster than __ATOMIC_RELAXED contrary to what I would
- * expect. Mayby other entry types will show otherwise.
- *
- * It is actually faster (at least on my machine) to do "x = 1 +
- * fetch_add(, 1)" instead of "x = add_fetch(, 1)".
+ * Like the blocking version. Returns 1 (one) if a new entry was
+ * acquired, 0 (zero) otherwise.
  */
-#define DEFINE_ENTRY_PUBLISHERPORT_NEXTENTRY_NONBLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)                                           \
-static inline int                                                                                                                                             \
-ring_buffer_prefix__ ## publisher_port_next_entry_nonblocking(struct ring_buffer_type_name__ * const ring_buffer,                                             \
-                                                              struct cursor_t * const cursor)                                                                 \
-{                                                                                                                                                             \
-        unsigned int n;                                                                                                                                       \
-        struct cursor_t seq;                                                                                                                                  \
-        struct cursor_t slowest_reader;                                                                                                                       \
-                                                                                                                                                              \
-        cursor->sequence = 1 + __atomic_load_n(&ring_buffer->write_cursor.sequence, __ATOMIC_ACQUIRE);                                                        \
-        slowest_reader.sequence = VACANT__;                                                                                                                   \
-        for (n = 0; n < sizeof(ring_buffer->entry_processor_cursors)/sizeof(struct cursor_t); ++n) {                                                          \
-                seq.sequence = __atomic_load_n(&ring_buffer->entry_processor_cursors[n].sequence, __ATOMIC_ACQUIRE);                                          \
-                if (seq.sequence < slowest_reader.sequence)                                                                                                   \
-                slowest_reader.sequence = seq.sequence;                                                                                                       \
-        }                                                                                                                                                     \
-        if (UNLIKELY__(VACANT__ == slowest_reader.sequence))                                                                                                  \
-                slowest_reader.sequence = cursor->sequence - (ring_buffer->reduced_size.count & cursor->sequence);                                            \
-        __atomic_store_n(&ring_buffer->slowest_entry_processor.sequence, slowest_reader.sequence, __ATOMIC_RELEASE);                                          \
-        if (LIKELY__((cursor->sequence - slowest_reader.sequence) <= ring_buffer->reduced_size.count)) {                                                      \
-                seq.sequence = cursor->sequence - 1;                                                                                                          \
-                if (__atomic_compare_exchange_n(&ring_buffer->write_cursor.sequence, &seq.sequence, cursor->sequence, 1, __ATOMIC_RELEASE, __ATOMIC_RELAXED)) \
-                        return 1;                                                                                                                             \
-        }                                                                                                                                                     \
-        return 0;                                                                                                                                             \
+#define DEFINE_ENTRY_PUBLISHER_NEXTENTRY_NONBLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)                                             \
+static inline int                                                                                                                                           \
+ring_buffer_prefix__ ## publisher_next_entry_nonblocking(struct ring_buffer_type_name__ * const ring_buffer,                                                \
+                                                              struct cursor_t * const cursor)                                                               \
+{                                                                                                                                                           \
+        unsigned int n;                                                                                                                                     \
+        struct cursor_t seq;                                                                                                                                \
+        struct cursor_t slowest_reader;                                                                                                                     \
+        const struct cursor_t incur = { 1 + __atomic_load_n(&ring_buffer->write_cursor.sequence, __ATOMIC_RELAXED), { 0 } };                                \
+                                                                                                                                                            \
+        cursor->sequence = incur.sequence;                                                                                                                  \
+        slowest_reader.sequence = VACANT__;                                                                                                                 \
+        for (n = 0; n < sizeof(ring_buffer->entry_processor_cursors)/sizeof(struct cursor_t); ++n) {                                                        \
+                seq.sequence = __atomic_load_n(&ring_buffer->entry_processor_cursors[n].sequence, __ATOMIC_RELAXED);                                        \
+                if (seq.sequence < slowest_reader.sequence)                                                                                                 \
+                        slowest_reader.sequence = seq.sequence;                                                                                             \
+        }                                                                                                                                                   \
+        if (UNLIKELY__(VACANT__ == slowest_reader.sequence))                                                                                                \
+                slowest_reader.sequence = incur.sequence - (ring_buffer->reduced_size.count & incur.sequence);                                              \
+        __atomic_store_n(&ring_buffer->slowest_entry_processor.sequence, slowest_reader.sequence, __ATOMIC_RELAXED);                                        \
+        if (LIKELY__((incur.sequence - slowest_reader.sequence) <= ring_buffer->reduced_size.count)) {                                                      \
+                seq.sequence = incur.sequence - 1;                                                                                                          \
+                if (__atomic_compare_exchange_n(&ring_buffer->write_cursor.sequence, &seq.sequence, incur.sequence, 1, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) \
+                        return 1;                                                                                                                           \
+        }                                                                                                                                                   \
+        return 0;                                                                                                                                           \
 }
 
 /*
  * Entry Publishers must call this function to commit the entry to the
  * entry processors. Blocks until the entry has been committed.
  */
-#define DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_BLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)  \
+#define DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)      \
 static inline __attribute__((always_inline)) void                                                                   \
-ring_buffer_prefix__ ## publisher_port_commit_entry_blocking(struct ring_buffer_type_name__ * const ring_buffer,    \
+ring_buffer_prefix__ ## publisher_commit_entry_blocking(struct ring_buffer_type_name__ * const ring_buffer,         \
                                                              const struct cursor_t * const cursor)                  \
 {                                                                                                                   \
         const uint_fast64_t required_read_sequence = cursor->sequence - 1;                                          \
                                                                                                                     \
-        while (__atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE) != required_read_sequence) \
-                YIELD();                                                                                            \
+        while (__atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_RELAXED) != required_read_sequence) \
+                nanosleep(&timeout__.timeout, NULL);                                                                \
                                                                                                                     \
         __atomic_fetch_add(&ring_buffer->max_read_cursor.sequence, 1, __ATOMIC_RELEASE);                            \
 }
@@ -374,14 +363,14 @@ ring_buffer_prefix__ ## publisher_port_commit_entry_blocking(struct ring_buffer_
  * entry processors. Returns 1 (one) if the entry has been commited, 0
  * (zero) otherwise.
  */
-#define DEFINE_ENTRY_PUBLISHERPORT_COMMITENTRY_NONBLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...) \
+#define DEFINE_ENTRY_PUBLISHER_COMMITENTRY_NONBLOCKING_FUNCTION(ring_buffer_type_name__, ring_buffer_prefix__...)     \
 static inline int                                                                                                     \
-ring_buffer_prefix__ ## publisher_port_commit_entry_nonblocking(struct ring_buffer_type_name__ * const ring_buffer,   \
+ring_buffer_prefix__ ## publisher_commit_entry_nonblocking(struct ring_buffer_type_name__ * const ring_buffer,        \
                                                                 const struct cursor_t * const cursor)                 \
 {                                                                                                                     \
         const uint_fast64_t required_read_sequence = cursor->sequence - 1;                                            \
                                                                                                                       \
-        if (__atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_ACQUIRE) != required_read_sequence)      \
+        if (__atomic_load_n(&ring_buffer->max_read_cursor.sequence, __ATOMIC_RELAXED) != required_read_sequence)      \
                 return 0;                                                                                             \
                                                                                                                       \
         __atomic_fetch_add(&ring_buffer->max_read_cursor.sequence, 1, __ATOMIC_RELEASE);                              \

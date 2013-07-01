@@ -264,13 +264,13 @@ set_non_blocking(int sock)
 	int flags;
 
 	flags = fcntl(sock, F_GETFL, 0);
-	if (unlikely(-1 == flags)) {
+	if (-1 == flags) {
 		M_ERROR("could not get flags", strerror(errno));
 		return 0;
 	}
 
 	flags = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-	if (unlikely(-1 == flags)) {
+	if (-1 == flags) {
 		M_ERROR("could not set flags", strerror(errno));
 		return 0;
 	}
@@ -284,14 +284,14 @@ set_blocking(int sock)
 	int flags;
 
 	flags = fcntl(sock, F_GETFL, 0);
-	if (unlikely(-1 == flags)) {
+	if (-1 == flags) {
 		M_ERROR("could not get flags", strerror(errno));
 		return 0;
 	}
 	flags &= ~O_NONBLOCK;
 
 	flags = fcntl(sock, F_SETFL, flags);
-	if (unlikely(-1 == flags)) {
+	if (-1 == flags) {
 		M_ERROR("could not set flags", strerror(errno));
 		return 0;
 	}

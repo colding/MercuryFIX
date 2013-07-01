@@ -74,29 +74,84 @@ AC_TYPE_UINT64_T
 AC_TYPE_UINT8_T
 
 # Checks for library functions.
+AC_CHECK_FUNCS([fdatasync usleep fullfsync localtime_r gmtime_r dup2 malloc ftruncate memmem posix_fallocate])
+AC_FUNC_STRERROR_R
 AC_FUNC_FORK
-AC_CHECK_FUNCS([dup2 malloc ftruncate memmem])
 
 #
 # Check implementation details of build host
 #
 
-# Check for indianess
-AC_C_BIGENDIAN(
-	[
-		AC_DEFINE([HAVE_BIG_ENDIAN], [1], [machine is big endian])
-		endianess="Big Endian"
+# Check for sysconf(_SC_PAGESIZE) - Used by disruptorC
+AC_MSG_CHECKING([for sysconf(_SC_PAGESIZE)])
+AC_COMPILE_IFELSE(
+	[AC_LANG_PROGRAM(
+		[[
+			#include <unistd.h>
+		        #include <stdio.h>
+  		]],
+  		[[
+			return (-1 == sysconf(_SC_PAGESIZE) ? 0 : 1;
+  		]]
+  	)],
+  	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([platform support for sysconf(_SC_PAGESIZE) is required])
 	],
-	[
-		AC_DEFINE([HAVE_LITTLE_ENDIAN], [1], [machine is little endian])
-		endianess="Little Endian"
-	],
-	[
-		AC_MSG_ERROR([unknown endianness])
+  	[
+		AC_MSG_RESULT([yes])
 	]
 )
 
-# Check for __atomic* builtins
+# Check for cache line size - Used by disruptorC
+AC_MSG_CHECKING([for cache line size])
+AC_RUN_IFELSE(
+	[AC_LANG_PROGRAM(
+		[[
+			#include <stddef.h>
+
+			#if defined __APPLE__
+			        #include <sys/sysctl.h>
+			#elif defined __linux__
+			        #include <stdio.h>
+			#else
+				#error unrecognized platform
+			#endif
+		]],
+		[[
+			#if defined __APPLE__
+			        size_t line_size = 0;
+			        size_t sizeof_line_size = sizeof(line_size);
+			        sysctlbyname("hw.cachelinesize", &line_size, &sizeof_line_size, 0, 0);
+			        return line_size;
+			#elif defined __linux__
+				FILE *p = 0;
+				p = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", "r");
+				unsigned int i = 0;
+				if (p) {
+				        fscanf(p, "%d", &i);
+				        fclose(p);
+				}
+				return i;
+			#else
+				return 0;
+			#endif
+		]]
+	)],
+	[
+		cache_line_size=0
+	],
+	[
+		cache_line_size=$?
+	],
+	[
+		AC_MSG_FAILURE([could not deduce cache line size])
+	]
+)
+AC_DEFINE_UNQUOTED([CACHE_LINE_SIZE], [($cache_line_size)], [Define to value of cache line size])
+AC_MSG_RESULT($cache_line_size)
+
+# Check for __atomic* builtins - Used by disruptorC
 AC_MSG_CHECKING([for __atomic builtins])
 AC_COMPILE_IFELSE(
 	[AC_LANG_PROGRAM(
@@ -116,6 +171,21 @@ AC_COMPILE_IFELSE(
   	[
 		AC_MSG_RESULT([no])
 		AC_MSG_FAILURE([compiler support for __atomic builtins are required])
+	]
+)
+
+# Check for indianess
+AC_C_BIGENDIAN(
+	[
+		AC_DEFINE([HAVE_BIG_ENDIAN], [1], [machine is big endian])
+		endianess="Big Endian"
+	],
+	[
+		AC_DEFINE([HAVE_LITTLE_ENDIAN], [1], [machine is little endian])
+		endianess="Little Endian"
+	],
+	[
+		AC_MSG_ERROR([unknown endianness])
 	]
 )
 
@@ -268,53 +338,6 @@ if test "x$have_msg_control" = "xyes"; then
 else
 	AC_MSG_RESULT([no])
 fi
-
-AC_MSG_CHECKING([for cache line size])
-AC_RUN_IFELSE(
-	[AC_LANG_PROGRAM(
-		[[
-			#include <stddef.h>
-
-			#if defined __APPLE__
-			        #include <sys/sysctl.h>
-			#elif defined __linux__
-			        #include <stdio.h>
-			#else
-				#error unrecognized platform
-			#endif
-		]],
-		[[
-			#if defined __APPLE__
-			        size_t line_size = 0;
-			        size_t sizeof_line_size = sizeof(line_size);
-			        sysctlbyname("hw.cachelinesize", &line_size, &sizeof_line_size, 0, 0);
-			        return line_size;
-			#elif defined __linux__
-				FILE *p = 0;
-				p = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", "r");
-				unsigned int i = 0;
-				if (p) {
-				        fscanf(p, "%d", &i);
-				        fclose(p);
-				}
-				return i;
-			#else
-				return 0;
-			#endif
-		]]
-	)],
-	[
-		cache_line_size=0
-	],
-	[
-		cache_line_size=$?
-	],
-	[
-		AC_MSG_FAILURE([could not deduce cache line size])
-	]
-)
-AC_DEFINE_UNQUOTED([CACHE_LINE_SIZE], [($cache_line_size)], [Define to value of cache line size])
-AC_MSG_RESULT($cache_line_size)
 
 dnl
 dnl MERCURY versions, names and default configuration values
@@ -476,6 +499,7 @@ AC_CONFIG_FILES([Makefile
                  stdlib/Makefile
                  stdlib/cmdline/Makefile
                  stdlib/config/Makefile
+                 stdlib/disruptor/Makefile
                  stdlib/locks/Makefile
                  stdlib/log/Makefile
                  stdlib/marshal/Makefile
@@ -492,6 +516,7 @@ AC_CONFIG_FILES([Makefile
                  applib/base/Makefile
                  applib/fixlib/Makefile
                  applib/fixlib/session/Makefile
+                 applib/fixmsg/Makefile
                  applib/fixio/Makefile
  		 servers/Makefile
 		 servers/generic/Makefile

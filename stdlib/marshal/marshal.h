@@ -8,21 +8,21 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *     (1) Redistributions of source code must retain the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer.
- * 
+ *
  *     (2) Redistributions in binary form must reproduce the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     (3) Neither the name of the copyright holder nor the names of
  *     its contributors may be used to endorse or promote products
  *     derived from this software without specific prior written
  *     permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -80,7 +80,9 @@
  * 'b' - 8 bit integer
  * 'w' - 16 bit integer
  * 'l' - 32 bit integer
+ * 'L' - 64 bit integer
  * 'f' - 32 bit IEEE 754 floating point a.k.a. binary32. Transmitted as an unsigned 32 bit integer.
+ * 'F' - 64 bit IEEE 754 floating point a.k.a. binary64. Transmitted as an unsigned 64 bit integer.
  *
  * Specifiers for unmarshalling:
  * -----------------------------
@@ -89,7 +91,9 @@
  * 'b' - Pointer to 8 bit integer
  * 'w' - Pointer to 16 bit integer
  * 'l' - Pointer to 32 bit integer
+ * 'L' - Pointer to 64 bit integer
  * 'f' - Pointer to 32 bit IEEE 754 floating point
+ * 'F' - Pointer to 64 bit IEEE 754 floating point
  *
  */
 
@@ -99,11 +103,11 @@
  */
 extern uint32_t
 vmarshal_size(const char *format,
-	      va_list ap);
+              va_list ap);
 
 extern uint32_t
 marshal_size(const char *format,
-	     ...);
+             ...);
 
 
 /*
@@ -114,17 +118,17 @@ marshal_size(const char *format,
  */
 extern bool
 vmarshal(uint8_t * const buf, // buffer
-	 const uint32_t len,  // size of buffer in bytes
-	 uint32_t *count,     // number of bytes marshalled into the buffer
-	 const char *format,  // format string specifying the argument list
-	 va_list ap);         // argument list
+         const uint32_t len,  // size of buffer in bytes
+         uint32_t *count,     // number of bytes marshalled into the buffer
+         const char *format,  // format string specifying the argument list
+         va_list ap);         // argument list
 
 extern bool
 marshal(uint8_t * const buf,
-	const uint32_t len,
-	uint32_t *count,
-	const char *format,
-	...);
+        const uint32_t len,
+        uint32_t *count,
+        const char *format,
+        ...);
 
 /*
  * Marshals content from buf into the variable argument list according
@@ -133,12 +137,12 @@ marshal(uint8_t * const buf,
  */
 extern int
 vunmarshal(const uint8_t * const buf, // buffer
-	   const uint32_t len,        // size of buffer in bytes
-	   const char *format,        // format string specifying the argument list
-	   va_list ap);               // argument list
+           const uint32_t len,        // size of buffer in bytes
+           const char *format,        // format string specifying the argument list
+           va_list ap);               // argument list
 
 extern int
 unmarshal(const uint8_t * const buf,
-	  const uint32_t len,
-	  const char *format,
-	  ...);
+          const uint32_t len,
+          const char *format,
+          ...);

@@ -9,7 +9,7 @@
 # without any warranty.
 #
 
-SUBDIRS = scm_state cmdline config locks log marshal network process rule_engine local_db
+SUBDIRS = scm_state cmdline config disruptor locks log marshal network process rule_engine local_db
 
 DISTCLEANFILES = $(BUILT_SOURCES) $(CLEAN_IN_FILES) Makefile
 CLEANFILES = *~

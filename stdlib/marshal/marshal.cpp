@@ -8,21 +8,21 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *     (1) Redistributions of source code must retain the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer.
- * 
+ *
  *     (2) Redistributions in binary form must reproduce the above
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     (3) Neither the name of the copyright holder nor the names of
  *     its contributors may be used to endorse or promote products
  *     derived from this software without specific prior written
  *     permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -37,11 +37,12 @@
  * SUCH DAMAGE.
  */
 
+#include "marshal.h"
+
 #ifdef HAVE_CONFIG_H
-#include "ac_config.h"
+    #include "ac_config.h"
 #endif
 #include "stdlib/log/log.h"
-#include "marshal.h"
 #include "primitives.h"
 #include "ieee754.h"
 
@@ -67,6 +68,7 @@ vmarshal_size(const char *format,
         uint8_t ub __attribute__ ((unused));
         uint16_t uw __attribute__ ((unused));
         uint32_t ul __attribute__ ((unused));
+        uint64_t ull __attribute__ ((unused));
         double f __attribute__ ((unused));
         char *s;
 
@@ -91,19 +93,27 @@ vmarshal_size(const char *format,
                         break;
                 case 'b':
                         ub = (uint8_t)va_arg(ap, int);
-                        retv += sizeof(uint8_t);
+                        retv += 8;
                         break;
                 case 'w':
                         uw = (uint16_t)va_arg(ap, int);
-                        retv += sizeof(uint16_t);
+                        retv += 16;
                         break;
                 case 'l':
                         ul = va_arg(ap, uint32_t);
-                        retv += sizeof(uint32_t);
+                        retv += 32;
+                        break;
+                case 'L':
+                        ull = va_arg(ap, uint64_t);
+                        retv += 64;
                         break;
                 case 'f':
                         f = va_arg(ap, double);
-                        retv += 32; // fixed size
+                        retv += 32;
+                        break;
+                case 'F':
+                        f = va_arg(ap, double);
+                        retv += 64;
                         break;
                 default:
                         goto exit;
@@ -142,13 +152,15 @@ vmarshal(uint8_t * const buf,
 {
         size_t inc = 0;
         uint8_t *pos = buf;
-        bool not_signed = true;
+        bool un_signed = true;
         int8_t b;
         uint8_t ub;
         int16_t w;
         uint16_t uw;
         int32_t l;
         uint32_t ul;
+        int64_t ll;
+        uint64_t ull;
         double f;
         char *s;
 
@@ -162,10 +174,10 @@ vmarshal(uint8_t * const buf,
                 if ('%' == *format) {
                         format++;
                         if ('u' == *format) {
-                                not_signed = true;
+                                un_signed = true;
                                 format++;
                         } else {
-                                not_signed = false;
+                                un_signed = false;
                         }
                 }
 
@@ -180,12 +192,12 @@ vmarshal(uint8_t * const buf,
                         memcpy((void*)pos, (const void*)s, inc);
                         break;
                 case 'b':
-                        inc = sizeof(uint8_t);
+                        inc = 8;
                         if (len < *count + inc) {
                                 M_DEBUG("Error marshalling");
                                 return false;
                         }
-                        if (not_signed) {
+                        if (un_signed) {
                                 ub = (uint8_t)va_arg(ap, int);
                                 *pos = ub;
                         } else {
@@ -194,31 +206,45 @@ vmarshal(uint8_t * const buf,
                         }
                         break;
                 case 'w':
-                        inc = sizeof(uint16_t);
+                        inc = 16;
                         if (len < *count + inc) {
                                 M_DEBUG("Error marshalling");
                                 return false;
                         }
-                        if (not_signed) {
+                        if (un_signed) {
                                 uw = (uint16_t)va_arg(ap, int);
-                                setus(pos, uw);
+                                setu16(pos, uw);
                         } else {
                                 w = (int16_t)va_arg(ap, int);
-                                setus(pos, (uint16_t)w);
+                                setu16(pos, (uint16_t)w);
                         }
                         break;
                 case 'l':
-                        inc = sizeof(uint32_t);
+                        inc = 32;
                         if (len < *count + inc) {
                                 M_DEBUG("Error marshalling");
                                 return false;
                         }
-                        if (not_signed) {
+                        if (un_signed) {
                                 ul = va_arg(ap, uint32_t);
-                                setul(pos, ul);
+                                setu32(pos, ul);
                         } else {
                                 l = va_arg(ap, int32_t);
-                                setul(pos, (uint32_t)l);
+                                setu32(pos, (uint32_t)l);
+                        }
+                        break;
+                case 'L':
+                        inc = 64;
+                        if (len < *count + inc) {
+                                M_DEBUG("Error marshalling");
+                                return false;
+                        }
+                        if (un_signed) {
+                                ull = va_arg(ap, uint64_t);
+                                setu64(pos, ull);
+                        } else {
+                                ll = va_arg(ap, int64_t);
+                                setu64(pos, (uint64_t)ll);
                         }
                         break;
                 case 'f':
@@ -229,7 +255,17 @@ vmarshal(uint8_t * const buf,
                         }
                         f = va_arg(ap, double);
                         ul = pack754_32(f);
-                        setul(pos, ul);
+                        setu32(pos, ul);
+                        break;
+                case 'F':
+                        inc = 64;
+                        if (len < *count + inc) {
+                                M_DEBUG("Error marshalling");
+                                return false;
+                        }
+                        f = va_arg(ap, double);
+                        ull = pack754_64(f);
+                        setu64(pos, ull);
                         break;
                 default:
                         M_WARNING("invalid format string");
@@ -244,121 +280,142 @@ vmarshal(uint8_t * const buf,
                 pos += inc;
         }
 
-	return ('\0' == *format); // end reached of format string?
+        return ('\0' == *format); // end reached of format string?
 }
 
 
 int
 unmarshal(const uint8_t * const buf,
-	  const uint32_t len,
-	  const char *format,
-	  ...)
+          const uint32_t len,
+          const char *format,
+          ...)
 {
-	int retv;
-	va_list ap;
+        int retv;
+        va_list ap;
 
-	va_start(ap, format);
-	retv = vunmarshal(buf, len, format, ap);
-	va_end(ap);
+        va_start(ap, format);
+        retv = vunmarshal(buf, len, format, ap);
+        va_end(ap);
 
-	return retv;
+        return retv;
 }
 
 int
 vunmarshal(const uint8_t * const buf,
-	   const uint32_t len,
-	   const char *format,
-	   va_list ap)
+           const uint32_t len,
+           const char *format,
+           va_list ap)
 {
-	int retv = 0;
-	size_t cnt = 0;
-	const uint8_t *pos = buf;
-	bool not_signed = true;
-	int8_t *b;
-	uint8_t *ub;
-	int16_t *w;
-	uint16_t *uw;
-	int32_t *l;
-	uint32_t *ul;
-	uint32_t n; // temporary value used when unpacking ieee 754 floats
-	double *f;
-	char **s = NULL;
+        int retv = 0;
+        size_t cnt = 0;
+        const uint8_t *pos = buf;
+        bool un_signed = true;
+        int8_t *b;
+        uint8_t *ub;
+        int16_t *w;
+        uint16_t *uw;
+        int32_t *l;
+        uint32_t *ul;
+        int64_t *ll;
+        uint64_t *ull;
+        uint32_t n32; // temporary value used when unpacking ieee 754 floats
+        uint64_t n64; // temporary value used when unpacking ieee 754 floats
+        double *f;
+        char **s = NULL;
 
-	if (1 > len)
-		return 0; // nipseriet
+        if (1 > len)
+                return 0; // nipseriet
 
-	for (; '\0' != *format; format++) {
+        for (; '\0' != *format; format++) {
 
-		if ('%' == *format) {
-			format++;
-			if ('u' == *format) {
-				not_signed = true;
-				format++;
-			} else
-				not_signed = false;
-		}
+                if ('%' == *format) {
+                        format++;
+                        if ('u' == *format) {
+                                un_signed = true;
+                                format++;
+                        } else
+                                un_signed = false;
+                }
 
-		switch (*format) {
-		case 's':
-			s = va_arg(ap, char**);
-			*s = strdup((const char*)pos);
-			if (*s) {
-				cnt += strlen(*s) + sizeof(char);
-			} else {
-				return -1;
-			}
-			retv++;
-			break;
-		case 'b':
-			cnt += sizeof(uint8_t);
-			if (not_signed) {
-				ub = (uint8_t*)va_arg(ap, uint8_t*);
-				*ub = *pos;
-			} else {
-				b = (int8_t*)va_arg(ap, int8_t*);
-				*b = (int8_t)*pos;
-			}
-			retv++;
-			break;
-		case 'w':
-			cnt += sizeof(uint16_t);
-			if (not_signed) {
-				uw = (uint16_t*)va_arg(ap, uint16_t*);
-				*uw = getus(pos);
-			} else {
-				w = (int16_t*)va_arg(ap, int16_t*);
-				*w = (int16_t)getus(pos);
-			}
-			retv++;
-			break;
-		case 'l':
-			cnt += sizeof(uint32_t);
-			if (not_signed) {
-				ul = va_arg(ap, uint32_t*);
-				*ul = getul(pos);
-			} else {
-				l = va_arg(ap, int32_t*);
-				*l = (int32_t)getul(pos);
-			}
-			retv++;
-			break;
-		case 'f':
-			cnt += 32;
-			f = va_arg(ap, double*);
-			n = getul(pos);
-			*f = unpack754_32(n);
-			retv++;
-			break;
-		default:
+                switch (*format) {
+                case 's':
+                        s = va_arg(ap, char**);
+                        *s = strdup((const char*)pos);
+                        if (*s) {
+                                cnt += strlen(*s) + sizeof(char);
+                        } else {
+                                return -1;
+                        }
+                        retv++;
+                        break;
+                case 'b':
+                        cnt += 8;
+                        if (un_signed) {
+                                ub = (uint8_t*)va_arg(ap, uint8_t*);
+                                *ub = *pos;
+                        } else {
+                                b = (int8_t*)va_arg(ap, int8_t*);
+                                *b = (int8_t)*pos;
+                        }
+                        retv++;
+                        break;
+                case 'w':
+                        cnt += 16;
+                        if (un_signed) {
+                                uw = (uint16_t*)va_arg(ap, uint16_t*);
+                                *uw = getu16(pos);
+                        } else {
+                                w = (int16_t*)va_arg(ap, int16_t*);
+                                *w = (int16_t)getu16(pos);
+                        }
+                        retv++;
+                        break;
+                case 'l':
+                        cnt += 32;
+                        if (un_signed) {
+                                ul = va_arg(ap, uint32_t*);
+                                *ul = getu32(pos);
+                        } else {
+                                l = va_arg(ap, int32_t*);
+                                *l = (int32_t)getu32(pos);
+                        }
+                        retv++;
+                        break;
+                case 'L':
+                        cnt += 64;
+                        if (un_signed) {
+                                ull = va_arg(ap, uint64_t*);
+                                *ull = getu64(pos);
+                        } else {
+                                ll = va_arg(ap, int64_t*);
+                                *ll = (int64_t)getu64(pos);
+                        }
+                        retv++;
+                        break;
+                case 'f':
+                        cnt += 32;
+                        f = va_arg(ap, double*);
+                        n32 = getu32(pos);
+                        *f = unpack754_32(n32);
+                        retv++;
+                        break;
+                case 'F':
+                        cnt += 64;
+                        f = va_arg(ap, double*);
+                        n64 = getu64(pos);
+                        *f = unpack754_64(n64);
+                        retv++;
+                        break;
+                default:
 //M_WARNING("invalid format string");
-			return -1;
-		}
-		if (len == cnt)
-			break;
-		if (len < cnt) // overflow
-			return -1;
-		pos = buf + cnt;
-	}
+                        return -1;
+                }
+                if (len == cnt)
+                        break;
+                if (len < cnt) // overflow
+                        return -1;
+                pos = buf + cnt;
+        }
 
-	return retv;
+        return retv;
 }

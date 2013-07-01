@@ -50,8 +50,12 @@
 #include <string.h>
 #include <sys/sysctl.h>
 
-#define likely(x__)   __builtin_expect((x__), 1)
-#define unlikely(x__) __builtin_expect((x__), 0)
+/*
+ * Hints to the compiler whether an expression is likely to be true or
+ * not
+ */
+#define LIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 1))
+#define UNLIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 0))
 
 #ifdef __APPLE__
 static inline int
@@ -100,6 +104,6 @@ get_available_cpu_count(void)
  */
 template<typename T>
 struct cache_line_storage {
-	T data __attribute__ ((aligned (CACHE_LINE_SIZE)));
-	char padding_[CACHE_LINE_SIZE > sizeof(T) ? CACHE_LINE_SIZE - sizeof(T) : 1];
-};
+	T data;
+        uint8_t padding[(CACHE_LINE_SIZE > sizeof(T)) ? (CACHE_LINE_SIZE - sizeof(T)) : (sizeof(T) % CACHE_LINE_SIZE)];
+} __attribute__((aligned(CACHE_LINE_SIZE)));

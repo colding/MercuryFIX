@@ -40,6 +40,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
@@ -47,10 +48,16 @@
 #include "stdlib/log/log.h"
 #include "db_utils.h"
 
-#define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg BLOB)"
-#define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg_type TEXT, partial_msg BLOB)"
-#define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, msg) VALUES(?1, ?2)"
-#define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, msg_type, partial_msg) VALUES(?1, ?2, ?3)"
+// #define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg BLOB)"
+// #define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg_type TEXT, partial_msg BLOB)"
+// #define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, msg) VALUES(?1, ?2)"
+// #define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, msg_type, partial_msg) VALUES(?1, ?2, ?3)"
+
+
+#define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg BLOB)"
+#define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg_type TEXT, partial_msg BLOB)"
+#define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg) VALUES(?1, ?2, ?3, ?4)"
+#define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg_type, partial_msg) VALUES(?1, ?2, ?3, ?4, ?5)"
 #define SELECT_MAX_RECV_SEQNUM "SELECT MAX(seqnum) FROM RECV_MESSAGES"
 #define SELECT_MAX_SENT_SEQNUM "SELECT MAX(seqnum) FROM SENT_MESSAGES"
 
@@ -182,10 +189,14 @@ MsgDB::store_sent_msg(const uint64_t seqnum,
                       const uint8_t * const msg,
                       const char * const msg_type)
 {
-        int ret = SQLITE_OK;
+        int ret;
+	struct timeval tval;
 
         if (!db_)
                 return 0;
+
+	// ignore errors
+	gettimeofday(&tval, NULL);
 
         ret = sqlite3_bind_int64(insert_sent_msg_statement, 1, seqnum);
         if (SQLITE_OK != ret) {
@@ -193,13 +204,25 @@ MsgDB::store_sent_msg(const uint64_t seqnum,
                 goto out;
         }
 
-        ret = sqlite3_bind_text(insert_sent_msg_statement, 2, msg_type, -1, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement, 2, tval.tv_sec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_blob(insert_sent_msg_statement, 3, msg, len, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement, 3, tval.tv_usec);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_text(insert_sent_msg_statement, 4, msg_type, -1, SQLITE_TRANSIENT);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_blob(insert_sent_msg_statement, 5, msg, len, SQLITE_TRANSIENT);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
@@ -223,10 +246,14 @@ MsgDB::store_recv_msg(const uint64_t seqnum,
                       const uint64_t len,
                       const uint8_t * const msg)
 {
-        int ret = SQLITE_OK;
+        int ret;
+	struct timeval tval;
 
         if (!db_)
                 return 0;
+
+	// ignore errors
+	gettimeofday(&tval, NULL);
 
         ret = sqlite3_bind_int64(insert_recv_msg_statement, 1, seqnum);
         if (SQLITE_OK != ret) {
@@ -234,7 +261,19 @@ MsgDB::store_recv_msg(const uint64_t seqnum,
                 goto out;
         }
 
-        ret = sqlite3_bind_blob(insert_recv_msg_statement, 2, msg, len, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement, 2, tval.tv_sec);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_int64(insert_sent_msg_statement, 3, tval.tv_usec);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_blob(insert_recv_msg_statement, 4, msg, len, SQLITE_TRANSIENT);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
