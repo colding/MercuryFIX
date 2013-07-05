@@ -59,18 +59,18 @@
 #include <string.h>
 #include <map>
 
-static std::map<uint_fast32_t, int> *fix_msgtypes_map;
 static std::map<uint_fast32_t, int> *fix_session_msgtypes_map;
+static std::map<uint_fast32_t, FIX_MsgType> *fix_msgtypes_map;
 
 __attribute__((constructor)) static void
-init_get_fix_msgtype(void)
+get_fix_msgtype_ctor(void)
 {
         uint_fast32_t is;
         unsigned int len;
         unsigned int n;
 
         // no memory leak here - it is going to live forever...
-        fix_msgtypes_map = new std::map<uint_fast32_t, int>;
+        fix_msgtypes_map = new std::map<uint_fast32_t, FIX_MsgType>;
 
         for (n = 0; n < FIX_MSGTYPES_COUNT; ++n) {
                 len = strlen(fix_msgtype_string[n]);
@@ -99,12 +99,12 @@ init_get_fix_msgtype(void)
                 default:
                         abort();
                 }
-                (*fix_msgtypes_map)[is] = n;
+                (*fix_msgtypes_map)[is] = (FIX_MsgType)n;
         }
 }
 
 __attribute__((constructor)) static void
-init_is_session_message(void)
+is_session_message_ctor(void)
 {
         uint_fast32_t is;
         unsigned int len;
@@ -150,7 +150,7 @@ get_fix_msgtype(const char soh,
 {
         uint_fast32_t is;
         unsigned int len = 0;
-        std::map<uint_fast32_t, int>::const_iterator it;
+        std::map<uint_fast32_t, FIX_MsgType>::const_iterator it;
 
         while (soh != str[len])
                 ++len;
@@ -185,7 +185,7 @@ get_fix_msgtype(const char soh,
         if (fix_msgtypes_map->end() == it)
                 return fmt_CustomMsg;
 
-        return (FIX_MsgType)it->second;
+        return it->second;
 }
 
 int
