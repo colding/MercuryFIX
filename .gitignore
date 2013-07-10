@@ -45,3 +45,5 @@ check_fixmsg
 pagesize
 pagesize.h
 cscope*
+compile
+

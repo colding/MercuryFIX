@@ -79,10 +79,10 @@ if test "x$1" = "xnoreconf"; then
     autoconf
 
     printbold "Running Automake..."
-    automake --warnings=all --Werror --force --copy 
+    automake --warnings=all --add-missing --force --copy 
 else
     printbold "Running autoreconf..."
-    autoreconf --warnings=all --force --verbose
+    autoreconf --warnings=all --install --force --verbose
 fi
 
 
