@@ -16,7 +16,19 @@ libfixmsg_la_LDFLAGS = -static
 
 libfixmsg_la_SOURCES = \
 	fix_types.cpp \
-	fix_types.cpp.h
+	fix_types.cpp.h \
+	fix_msg.cpp \
+	fix_msg.cpp.h \
+	FIX40.cpp \
+	FIX41.cpp \
+	FIX42.cpp \
+	FIX43.cpp \
+	FIX44.cpp \
+	FIX50.cpp \
+	FIX50SP1.cpp \
+	FIX50SP2.cpp \
+	FIXT11.cpp \
+	fixmsg_utils.cpp
 
 libfixmsg_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
 libfixmsg_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
@@ -30,13 +42,13 @@ noinst_PROGRAMS = check_fixmsg
 check_fixmsg_LDFLAGS = -all-static
 check_fixmsg_SOURCES = \
 	check_fixmsg.cpp \
-	fix_types.cpp \
-	fix_types.cpp.h
+	fix_msg.h
 
 check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) $(MERCURY_CXXFLAGS)
 check_fixmsg_LDADD = \
 	$(CHECK_LIBS) \
 	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
+	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la
 
 ##################################

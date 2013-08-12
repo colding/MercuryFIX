@@ -57,6 +57,7 @@ enum FIX_Version : unsigned int
 	FIXT_1_1,
 	FIX_VERSION_TYPES_COUNT
 };
+
 const char fix_version_string[FIX_VERSION_TYPES_COUNT][16] = 
 {
         "FIX.4.0",
@@ -93,10 +94,10 @@ enum FIX_Type : unsigned int
         ft_Currency,
         ft_Exchange,
         ft_MonthYear,
-        ft_UTCTimestamp,
+	ft_UTCTimestamp, // formerly "time"
         ft_UTCTimeOnly,
         ft_UTCDateOnly,
-        ft_LocalMktDate,
+	ft_LocalMktDate, // formerly "date"
         ft_TZTimeOnly,
         ft_TZTimestamp,
         ft_data,
@@ -108,6 +109,37 @@ enum FIX_Type : unsigned int
         ft_XMLData,
         ft_Language,
 };
+
+struct FIX_Tag {
+	unsigned int tag;
+	FIX_Type type;
+};
+
+/*
+ * Standard tags and their types
+ */
+extern const struct FIX_Tag fix40_std_tags[];
+extern const struct FIX_Tag fix41_std_tags[];
+extern const struct FIX_Tag fix42_std_tags[];
+extern const struct FIX_Tag fix43_std_tags[];
+extern const struct FIX_Tag fix44_std_tags[];
+extern const struct FIX_Tag fix50_std_tags[];
+extern const struct FIX_Tag fix50sp1_std_tags[];
+extern const struct FIX_Tag fix50sp2_std_tags[];
+extern const struct FIX_Tag fixt11_std_tags[];
+
+/*
+ * Standard data tags
+ */
+extern const struct FIX_Tag fix40_std_data_tags[];
+extern const struct FIX_Tag fix41_std_data_tags[];
+extern const struct FIX_Tag fix42_std_data_tags[];
+extern const struct FIX_Tag fix43_std_data_tags[];
+extern const struct FIX_Tag fix44_std_data_tags[];
+extern const struct FIX_Tag fix50_std_data_tags[];
+extern const struct FIX_Tag fix50sp1_std_data_tags[];
+extern const struct FIX_Tag fix50sp2_std_data_tags[];
+extern const struct FIX_Tag fixt11_std_data_tags[];
 
 enum FIX_MsgType : uint_fast32_t
 {

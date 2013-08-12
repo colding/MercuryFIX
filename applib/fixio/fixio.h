@@ -316,7 +316,7 @@ public:
          *
          * *msgtype_offset is the offset in bytes from the first byte
          * in the message till the first character of the message
-         * type field.
+         * type field value.
          *
 	 * **data is the message data. This data is owened by
 	 * the caller which must free it.
@@ -333,7 +333,7 @@ public:
          *
          * "*messages" is a bunch of recieved raw messages collected
          * by disruptor batching. They are ordered by recieval
-         * time. Caller must free RawMessage.data.
+         * time. Caller must free() RawMessage.data.
          */
         void pop(const struct count_t * const reg_number,
                  struct cursor_t * const cursor,
@@ -353,9 +353,10 @@ public:
         void unregister_popper(const struct count_t * const reg_number);
 
         /*
-         * threadsafe - each pop will return a non-const pointer to a
-         * complete message which must be processed in situ or
-         * copied.
+         * Not threadsafe - each pop will return a non-const pointer
+         * to a complete message which can be processed in situ or may
+         * be copied. Caller does not own the memory pointed to and
+         * may not free() it.
          *
          * *len is the total length of the message, not the value of
          * tag 9, BodyLength.
@@ -368,7 +369,8 @@ public:
 	 * the popper class which will free it, but the caller may
 	 * modify the pointed to bytes as much as it will.
          *
-         * Only one thread must call this method.
+         * Only one thread must call this method or the behavior is
+         * undefined.
          *
          * Return value is zero if all is well, or an errno value if
          * not.

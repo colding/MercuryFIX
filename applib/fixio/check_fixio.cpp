@@ -49,6 +49,7 @@
 #endif
 #include "stdlib/log/log.h"
 #include "stdlib/network/network.h"
+#include "stdlib/disruptor/memsizes.h"
 #include "fixio.h"
 #include "db_utils.h"
 
@@ -355,6 +356,9 @@ START_TEST(test_FIX_Pusher_create)
 {
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
 
+	fprintf(stdout, "====test_blargs====\n");
+	fprintf(stderr, "====test_blargs====\n");
+
         fail_unless(NULL != pusher, NULL);
         fail_unless(1 == pusher->init(), NULL);
 }
@@ -374,7 +378,7 @@ END_TEST
 
 
 /*
- * Test initalization of FIX_Popper class
+ * Test store and retrieval of message sequence numbers
  */
 START_TEST(test_message_database)
 {

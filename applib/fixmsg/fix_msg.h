@@ -43,7 +43,12 @@
     #include "ac_config.h"
 #endif
 #include <set>
+#include <map>
+#include <stddef.h>
+#include <stdlib.h>
 #include "applib/fixmsg/fix_types.h"
+
+#if 0
 
 #define INITAL_TX_BUFFER_SIZE (2048)
 
@@ -95,6 +100,7 @@ private:
 	uint8_t stdbuf_[INITAL_TX_BUFFER_SIZE];
 	std::set<int> required_fields_;
 };
+#endif
 
 /*
  * FIXMessageRX will handle a recieved message from the FIXIO
@@ -103,44 +109,178 @@ private:
 class FIXMessageRX
 {
 public:
-	FIXMessage(void)
+	/*
+	 * Named constructors. Makes it explicit whether or not the
+	 * instance owns the memory of the message or not. done() or
+	 * the destructor will free() it if it does.
+	 */
+	static FIXMessageRX make_fix_message_mem_owner_on_stack(const FIX_Version version, 
+								const char soh);
+
+	static FIXMessageRX *make_fix_message_mem_owner_on_heap(const FIX_Version version, 
+								const char soh);
+
+	static FIXMessageRX make_fix_message_with_provided_mem_on_stack(const FIX_Version version, 
+									const char soh);
+
+	static FIXMessageRX *make_fix_message_with_provided_mem_on_heap(const FIX_Version version, 
+									const char soh);
+
+	/*
+	 * Must be invoked before an instance of this class is set to
+	 * work. This is a heavy operation so objects of this class
+	 * must be pooled. They are not cheap to create.
+	 * 
+	 * Returns 0 (zero) if all is well, non-zero if not.
+	 */
+	int init(void);
+
+	/*
+	 * Any custom tags must be explicitly added here. They must be
+	 * added before traversing the message using next_field().
+	 *
+	 * These custom tags can never be removed and they will
+	 * overwrite the standard tags in case of a tag collision.
+	 *
+	 * Again, this is a heavy operation and should only be invoked
+	 * once in the objects lifetime.
+	 * 
+	 * Returns 0 (zero) if all is well, non-zero if not.
+	 */
+	int add_custom_tag(const struct FIX_Tag & custom_tag);
+
+	/*
+	 * Regardless of whether the instance owns the memory of the
+	 * message or not, this method makes the instance able to read
+	 * and write to the message memory area.
+	 */
+	void imprint(const uint32_t msgtype_offset,
+		     uint8_t * const msg)
 		{
-			take_ownership_ = 0;
-			len_ = 0;
-			msgtype_offset_ = 0;
+			if (owns_memory_)
+				free(msg_);
+			msg_ = msg;
+			prev_value_ = NULL;
+			pos_ = msg_ + msgtype_offset - 3; // reverse over "35=" to point at '3'
+		};
+
+	/*
+	 * Resets the RX message and readies it for another imprint(). 
+	 */
+	void done(void)
+		{
+			if (owns_memory_)
+				free(msg_);
 			msg_ = NULL;
+			pos_ = NULL;
+			prev_value_ = NULL;
 		};
 
-	FIXMessage(const int take_ownership,
-		   const uint32_t len,
-		   const uint32_t msgtype_offset,
-		   uint8_t *msg)
+
+	/*
+	 * Used to traverse the message fields. 
+	 *
+	 * Parameters:
+	 *
+	 * length - The size in bytes of *value
+	 * value  - A pointer to the first byte in the field value
+	 *
+	 * Returns: 
+	 *
+	 *  - the tag value (a number always greater than zero) if all
+	 *    is well.  
+	 *
+	 *  - 0 (zero) if there are no more fields in the message or if
+         *    none has been imprinted upon it.
+	 *
+	 * - -1 (minus one) if there is a serious parsing error. The
+         *   message in question must be rejected. Further
+         *   invocations of this method will have undefined effects.
+	 *
+	 * Parsing errors must always result in a session level reject
+	 * (FIX MsgType 35=3).
+	 *
+	 * The first field to be returned is always tag 35 (MsgType). 
+	 *
+	 * The last field to be returned is whichever immediately
+	 * preceeds the checksum field. size and value are undefined
+	 * for all further invocations of next_value() and the return
+	 * value is 0 (zero).
+	 *
+	 * The caller has exclusive read/write access to the message
+	 * until done() is called. But, and this is a big but, the
+	 * behavior is undefined if the caller actually do write to
+	 * it. Please grok the next_field() code to learn when writes
+	 * are allowed and when not.
+	 *
+	 * IMPORTANT: The standard is not quite crystal clear on this,
+	 * but my interpretation is that the '=' delimiting the tag
+	 * and the value does not have bytes on either side which are
+	 * not part of the tag or the value.
+	 */
+	int next_field(size_t & length, uint8_t **value);
+
+protected:
+	FIXMessageRX(const FIX_Version version,
+		     const int owns_memory,
+		     const char soh)
+		: version_(version),
+		  owns_memory_(owns_memory),
+		  soh_(soh),
+		  msg_(NULL),
+		  pos_(NULL),
+		  prev_value_(NULL)
 		{
-			take_ownership_ = take_ownership;
-			len_ = len;
-			msgtype_offset_ = msgtype_offset;
-			msg_ = msg;
 		};
-
-	import(const int take_ownership,
-	       const uint32_t len,
-	       const uint32_t msgtype_offset,
-	       uint8_t *msg)
+	
+	~FIXMessageRX()
 		{
-			if (take_ownership_)
-				free(msg);
-
-			take_ownership_ = take_ownership;
-			len_ = len;
-			msgtype_offset_ = msgtype_offset;
-			msg_ = msg;
+			if (owns_memory_)
+				free(msg_);
 		};
 
 private:
-	int take_ownership_;
-	uint32_t len_;
-	uint32_t msgtype_offset_;
+	/*
+	 * Returns 1 (one) if the tag is of type ft_data, 0 (zero)
+	 * otherwise.
+	 */
+	int field_contains_data(unsigned int tag);
+
+	const FIX_Version version_;
+	const int owns_memory_;
+	const char soh_;
+	std::set<unsigned int> data_tags_;
+	std::map<unsigned int, FIX_Type> tags_;
 	uint8_t *msg_;
+	uint8_t *pos_;
+	uint8_t *prev_value_;
 };
 
+inline FIXMessageRX 
+FIXMessageRX::make_fix_message_mem_owner_on_stack(const FIX_Version version, 
+						  const char soh)
+{
+	return FIXMessageRX(version, 1, soh);
+}
+
+inline FIXMessageRX*
+FIXMessageRX::make_fix_message_mem_owner_on_heap(const FIX_Version version, 
+						 const char soh)
+{
+	return new FIXMessageRX(version, 1, soh);
+}
+
+inline FIXMessageRX 
+FIXMessageRX::make_fix_message_with_provided_mem_on_stack(const FIX_Version version, 
+							  const char soh)
+{
+	return FIXMessageRX(version, 0, soh);
+}
+
+inline FIXMessageRX*
+FIXMessageRX::make_fix_message_with_provided_mem_on_heap(const FIX_Version version, 
+							 const char soh)
+{
+	return new FIXMessageRX(version, 0, soh);
+}
 

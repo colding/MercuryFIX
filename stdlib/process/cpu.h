@@ -96,14 +96,3 @@ get_available_cpu_count(void)
         return get_cpu_count() - 1;
 }
 
-/*
- * Used for cache line alligned data, which is accessed a lot by more
- * than one simultaneous thread, to avoid false sharing. See:
- *
- * http://www.drdobbs.com/go-parallel/article/217500206?pgno=4
- */
-template<typename T>
-struct cache_line_storage {
-	T data;
-        uint8_t padding[(CACHE_LINE_SIZE > sizeof(T)) ? (CACHE_LINE_SIZE - sizeof(T)) : (sizeof(T) % CACHE_LINE_SIZE)];
-} __attribute__((aligned(CACHE_LINE_SIZE)));

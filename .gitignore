@@ -42,8 +42,8 @@ versatile
 test-driver
 check_fixio
 check_fixmsg
-pagesize
-pagesize.h
+memsizes
+memsizes.h
 cscope*
 compile
 

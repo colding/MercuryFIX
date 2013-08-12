@@ -82,24 +82,51 @@ AC_FUNC_FORK
 # Check implementation details of build host
 #
 
-# Check for sysconf(_SC_PAGESIZE) - Used by disruptorC
-AC_MSG_CHECKING([for sysconf(_SC_PAGESIZE)])
-AC_COMPILE_IFELSE(
+# Check for (4 <= sizeof(int)) - Assumed in many places
+AC_MSG_CHECKING([for 4 <= sizeof(int)])
+AC_RUN_IFELSE(
 	[AC_LANG_PROGRAM(
 		[[
 			#include <unistd.h>
-		        #include <stdio.h>
-  		]],
-  		[[
-			return (-1 == sysconf(_SC_PAGESIZE) ? 0 : 1;
-  		]]
-  	)],
-  	[
+		]],
+		[[
+			return (4 <= sizeof(int)) ? 0 : 1;
+		]]
+	)],
+	[
+		AC_MSG_RESULT([ok])
+	],
+	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([sizeof(int) has to be at least 4 bytes])
+	],
+	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([sizeof(int) has to be at least 4 bytes])
+	]
+)
+
+# Check for sysconf(_SC_PAGESIZE) - Used by disruptorC
+AC_MSG_CHECKING([for sysconf(_SC_PAGESIZE)])
+AC_RUN_IFELSE(
+	[AC_LANG_PROGRAM(
+		[[
+			#include <unistd.h>
+		]],
+		[[
+			return (-1 != sysconf(_SC_PAGESIZE)) ? 0 : 1;
+		]]
+	)],
+	[
+		AC_MSG_RESULT([ok])
+	],
+	[
 		AC_MSG_RESULT([no])
 		AC_MSG_FAILURE([platform support for sysconf(_SC_PAGESIZE) is required])
 	],
-  	[
-		AC_MSG_RESULT([yes])
+	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([platform support for sysconf(_SC_PAGESIZE) is required])
 	]
 )
 
@@ -122,34 +149,36 @@ AC_RUN_IFELSE(
 			#if defined __APPLE__
 			        size_t line_size = 0;
 			        size_t sizeof_line_size = sizeof(line_size);
-			        sysctlbyname("hw.cachelinesize", &line_size, &sizeof_line_size, 0, 0);
-			        return line_size;
+			        if (sysctlbyname("hw.cachelinesize", &line_size, &sizeof_line_size, 0, 0))
+				        return 1;
+			        return 0;
 			#elif defined __linux__
 				FILE *p = 0;
 				p = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", "r");
 				unsigned int i = 0;
 				if (p) {
-				        fscanf(p, "%d", &i);
+				        if (1 != fscanf(p, "%u", &i))
+					        return 1;
 				        fclose(p);
+				} else {
+                                        return 1;
 				}
-				return i;
-			#else
 				return 0;
+			#else
+				return 1;
 			#endif
 		]]
 	)],
 	[
-		cache_line_size=0
+		AC_MSG_RESULT([ok])
 	],
 	[
-		cache_line_size=$?
+		AC_MSG_FAILURE([could not deduce cache line size])
 	],
 	[
 		AC_MSG_FAILURE([could not deduce cache line size])
 	]
 )
-AC_DEFINE_UNQUOTED([CACHE_LINE_SIZE], [($cache_line_size)], [Define to value of cache line size])
-AC_MSG_RESULT($cache_line_size)
 
 # Check for __atomic* builtins - Used by disruptorC
 AC_MSG_CHECKING([for __atomic builtins])
@@ -238,7 +267,7 @@ if test "x$have_msg_control" = "xyes"; then
 		[[
 			#include <sys/types.h>
         		#include <sys/socket.h>
-      			]],
+      		]],
       		[[
 			struct cmsghdr cm; unsigned char *p = CMSG_DATA(&cm);
       		]]
@@ -528,7 +557,6 @@ echo "\
 
 	Target Platform:           $target
 	Endianess:                 $endianess
-	Cache line size:	   $cache_line_size
 	Making a debug build:      $msg_debug
 	Build test files:          $msg_tests
         Mercury version:           $PACKAGE_VERSION

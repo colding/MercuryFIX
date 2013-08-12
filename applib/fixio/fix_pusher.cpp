@@ -182,9 +182,9 @@ struct pusher_thread_args_t {
 };
 
 /*
- * OK, this is butt ugly, but I need a fast solution. The maximum
- * value of a uin64_t (18446744073709551615) has 20 digits. 0 (zero)
- * is returned for larger numbers.
+ * OK, this is butt ugly, but I need a fast, not a pretty,
+ * solution. The maximum value of a uin64_t (18446744073709551615 as
+ * it is) has 20 digits. 0 (zero) is returned for larger numbers.
  */
 static inline int
 get_digit_count(const uint64_t num)

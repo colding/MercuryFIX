@@ -83,7 +83,7 @@ get_fix_msgtype_ctor(void)
                         break;
                 case 2:
                         is = (((uint_fast32_t)fix_msgtype_string[n][1] << 8) |
-                              (uint_fast32_t)fix_msgtype_string[n][0]) ;
+                              (uint_fast32_t)fix_msgtype_string[n][0]);
                         break;
                 case 3:
                         is = (((uint_fast32_t)fix_msgtype_string[n][2] << 16) |
@@ -124,7 +124,7 @@ is_session_message_ctor(void)
                         break;
                 case 2:
                         is = (((uint_fast32_t)fix_session_msgtype_string[n][1] << 8) |
-                              (uint_fast32_t)fix_session_msgtype_string[n][0]) ;
+                              (uint_fast32_t)fix_session_msgtype_string[n][0]);
                         break;
                 case 3:
                         is = (((uint_fast32_t)fix_session_msgtype_string[n][2] << 16) |
