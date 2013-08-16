@@ -27,10 +27,10 @@ A FIX server which:
 DOING
 =====
 
-Currently I'm working with the FIX IO library (utillib/fixio). It is
+Currently I'm working with the FIX IO library (applib/fixio). It is
 now almost feature complete. Outstanding issue is that the popper
 class needs to handle detection of messages gabs and the sending of
-ResendRequests.
+ResendRequests. To that end I need to complete applib/fixmsg.
 
 
 The big TODOs
