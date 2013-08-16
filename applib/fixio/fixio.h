@@ -82,14 +82,15 @@ class FIX_PushBase
         /*
          * Pushes a FIX messages onto the outgoing stack.
          *
-         * Must not contain tags:
+         * Must not contain these tags:
          *   8 (BeginString), 9 (BodyLength), 35 (MsgType), 34 (MsgSeqNum)
          *
-         * But must end with:
+         * But must begin with:
+         *   <SOH>
+	 *
+         * and must end with:
          *   <SOH>10=
          *
-         * And must begin with:
-         *   <SOH>
          *
          * The mentioned tags will be added be the push function and
          * so will the checksum value.

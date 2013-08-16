@@ -48,63 +48,63 @@
 #include <stdlib.h>
 #include "applib/fixmsg/fix_types.h"
 
-#if 0
-
-    #define INITAL_TX_BUFFER_SIZE (2048)
+#define INITAL_TX_BUFFER_SIZE (2048)
 
 /*
  * FIXMessageTX will prepare a message for sending by the FIXIO
- * framework, specifically a FIX_Pusher instance.
+ * framework, specifically a FIX_PushBase instance. Instances of this
+ * class must be pooled.
  */
 class FIXMessageTX
 {
 public:
-        /*
-         * strict: Guarantee that the messge is composed correctly
-         * according to the FIX specification. Only use this while
-         * testing as it is quite expensive.
-         */
-        FIXMessage(const FIX_Version fix_version,
-                   const FIX_MsgType msg_type,
-                   const bool strict)
+        FIXMessageTX(const FIX_Version fix_version)
                 : fix_version_(fix_version),
-                  msg_type_(msg_type),
-                  strict_(strict)
+		  body_length_(0),
+		  msg_type_(fmt_CustomMsg),
+		  buf_size_(INITAL_TX_BUFFER_SIZE),
+		  buf_(stdbuf_),
+		  extbuf_(NULL),
+		  pos_(buf_)
                 {
-                        buf_size_ = INITAL_TX_BUFFER_SIZE;
-                        extbuf_ = NULL;
-                        buf_ = stdbuf_;
                 };
 
-        void reset(void);
+	/*
+	 * Inserts a FIX field, in order, into the message.
+	 */
+        int insert_field(const unsigned int tag,
+			 const size_t length,
+			 const uint8_t *value);
 
-        int insert_tag(const type_t type,
-                       const uint32_t tag,
-                       const void *value);
-
-        void expose(size_t *len,
-                    uint8_t **data,
-                    char **msg_type) const;
+	/*
+	 * Exposes information required by FIX_PushBase::push(). The
+	 * first invocation of insert_field() after this method has
+	 * been invoked, will be inserting data into a blank message.
+	 */
+        void expose(size_t * const len,
+                    const uint8_t **data,
+                    const char **msg_type);
 
 private:
-        FIXMessage(void)
+        ~FIXMessageTX()
                 {
+			free(extbuf_);
                 };
 
         const FIX_Version fix_version_;
-        const FIX_MsgType msg_type_;
-        const bool strict_;
+	size_t body_length_;	
+        FIX_MsgType msg_type_;
         size_t buf_size_;
-        uint8_t *buf_;
-        uint8_t *extbuf_;
+	uint8_t *buf_;
+	uint8_t *extbuf_;
+	uint8_t *pos_;
         uint8_t stdbuf_[INITAL_TX_BUFFER_SIZE];
-        std::set<int> required_fields_;
 };
-#endif
 
 /*
  * FIXMessageRX will handle a recieved message from the FIXIO
- * framework, specifically from a FIX_Popper instance.
+ * framework, specifically from a FIX_Popper instance. Instances of
+ * this class must be pooled.
  */
 class FIXMessageRX
 {

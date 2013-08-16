@@ -16,9 +16,10 @@ libfixmsg_la_LDFLAGS = -static
 
 libfixmsg_la_SOURCES = \
 	fix_types.cpp \
-	fix_types.cpp.h \
-	fix_msg.cpp \
-	fix_msg.cpp.h \
+	fix_types.h \
+	fix_msg_rx.cpp \
+	fix_msg_tx.cpp \
+	fix_msg.h \
 	FIX40.cpp \
 	FIX41.cpp \
 	FIX42.cpp \

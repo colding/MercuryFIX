@@ -45,8 +45,6 @@
 #include "fixmsg_utils.h"
 #include <stdio.h>
 
-#define d(format__, ...) printf("%d: " format__ "\n", __LINE__, ## __VA_ARGS__)
-
 int
 FIXMessageRX::field_contains_data(unsigned int tag)
 {
