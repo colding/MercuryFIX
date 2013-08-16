@@ -93,10 +93,10 @@ class FIX_PushBase
          *
          * The mentioned tags will be added be the push function and
          * so will the checksum value.
-	 *
-	 * len is the size of data in bytes.
-	 * data is a pointer to a partial FIX message.
-	 * msg_type is the tag 35 message type value.
+         *
+         * len is the size of data in bytes.
+         * data is a pointer to a partial FIX message.
+         * msg_type is the tag 35 message type value.
          */
         virtual int push(const size_t len,
                          const uint8_t * const data,
@@ -148,10 +148,10 @@ public:
          *
          * The mentioned tags will be added be the push function and
          * so will the checksum value.
-	 *
-	 * len is the size of data in bytes.
-	 * data is a pointer to a partial FIX message.
-	 * msg_type is the tag 35 message type value.
+         *
+         * len is the size of data in bytes.
+         * data is a pointer to a partial FIX message.
+         * msg_type is the tag 35 message type value.
          */
         int push(const size_t len,
                  const uint8_t * const data,
@@ -318,8 +318,8 @@ public:
          * in the message till the first character of the message
          * type field value.
          *
-	 * **data is the message data. This data is owened by
-	 * the caller which must free it.
+         * **data is the message data. This data is owened by
+         * the caller which must free it.
          *
          * Returns zero if all is well, non-zero if not.
          */
@@ -364,10 +364,10 @@ public:
          * *msgtype_offset is the offset in bytes from the first byte
          * in the message till the first character of the message
          * type field.
-	 *
-	 * **data is the session message data. This data is owened by
-	 * the popper class which will free it, but the caller may
-	 * modify the pointed to bytes as much as it will.
+         *
+         * **data is the session message data. This data is owened by
+         * the popper class which will free it, but the caller may
+         * modify the pointed to bytes as much as it will.
          *
          * Only one thread must call this method or the behavior is
          * undefined.
@@ -407,13 +407,13 @@ public:
          * be a valid value for tag 8, BeginString. FIX_ver will be
          * ignored if it is NULL.
          *
-	 * *session_message_types: messages with these message types
+         * *session_message_types: messages with these message types
          * are split into the session queue. The popper takes
          * ownership of the pointer. ResendRequest/SequenceReset (type
          * '2' and '4') is handles directly by the popper. It will be
          * ignored if it is NULL and overwrite any previous pointer if
          * not.
-	 *
+         *
          * *pusher is used by the popper to respond to
          * ResendRequest/SequenceReset. The popper does not take
          * ownership of the pusher. It will be ignored if it is NULL

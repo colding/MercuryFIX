@@ -46,65 +46,141 @@
 #include <check.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include "stdlib/log/log.h"
+#include "fix_msg.h"
+#include "applib/fixio/fixio.h"
 
-#if 0
+#define DELIM '|'
 
 /*
- * Test start and stop. The pusher and they popper must be able to
- * stop and start again without loosing any messages.
+ * Valid partial messages for push class
  */
-START_TEST(test_FIX_start_stop)
+static const char *partial_messages[2] =
 {
-        const char * const sent_db = "23E19F70-616C-4551-BB0E-2EF61EFB9474.sent";
-        const char * const recv_db = "538B402A-18CD-4D23-A685-94D31773D50F.recv";
+        "|49=BANZAI|95=00004|91=1|9||52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|95=4|91=1|9||52=20121105-23:25:25|56=EXEC|95=7|91=1| d=3||11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
+};
 
+/*
+ * Extracted field values of partial_messages[1] above
+ */
+static const char *field_values[14] =
+{
+        "FOOBAR",
+        "1",
+        "BANZAI",
+        "4",
+        "1|9|",
+        "20121105-23:25:25",
+        "EXEC",
+        "7",
+        "1| d=3|",
+        "1352157925309",
+        "10000",
+        "1352157912357",
+        "1",
+        "SPY",
+};
+
+/*
+ * Some message types to feed the pusher
+ */
+static const char *message_types[2] =
+{
+        "8",
+        "FOOBAR",
+};
+
+/*
+ * Test imprint() and done().
+ */
+START_TEST(test_FIXMessageRX_resource_management)
+{
         int n;
+        int tag;
+        size_t value_length;
+        uint8_t *value;
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
+        FIXMessageRX rx_msg = FIXMessageRX::make_fix_message_mem_owner_on_stack(FIX_4_1, DELIM);
+
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
 
-        remove(sent_db);
-        remove(recv_db);
-
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
         fail_unless(1 == pusher->init(), NULL);
         fail_unless(1 == popper->init(), NULL);
-        pusher->start(sent_db, "FIX.4.1", sockets[0]);
-        popper->start(recv_db, "FIX.4.1", NULL, sockets[1]);
+        fail_unless(1 == rx_msg.init(), NULL);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[0]), (const uint8_t *)partial_messages[0], message_types[0]), NULL);
-        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
-        fail_unless(len == strlen(complete_messages[0]), NULL);
-        fail_unless(0 == memcmp(complete_messages[0], msg, len), NULL);
-        free(msg);
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
+        popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
-        fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
-        fail_unless(len == strlen(complete_messages[1]), NULL);
-        fail_unless(0 == memcmp(complete_messages[1], msg, len), NULL);
-
-        pusher->stop();
-        pusher->start(NULL, NULL, -1);
-        popper->stop();
-        popper->start(NULL, NULL, NULL, -1);
-
-        for (n = 2; n < 16; ++n) {
+        for (n = 0; n < 2; ++n) {
                 fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
-                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
-                fail_unless(len == strlen(complete_messages[n]), NULL);
-                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
-                free(msg);
+                popper->pop(&len, &msgtype_offset, &msg);
+                rx_msg.imprint(msgtype_offset, msg);
+
+                do {
+                        tag = rx_msg.next_field(value_length, &value);
+                } while (0 < tag);
+                rx_msg.done();
+
+                fail_unless(0 == tag, NULL);
         }
 
         pusher->stop();
         popper->stop();
+}
+END_TEST
 
-        remove(sent_db);
-        remove(recv_db);
+/*
+ * Test next_field()
+ */
+START_TEST(test_FIXMessageRX_next_field)
+{
+        int n;
+        int tag;
+        size_t value_length;
+        uint8_t *value;
+        uint32_t len;
+        uint32_t msgtype_offset;
+        uint8_t *msg;
+        FIXMessageRX rx_msg = FIXMessageRX::make_fix_message_mem_owner_on_stack(FIX_4_1, DELIM);
+
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init(), NULL);
+        fail_unless(1 == rx_msg.init(), NULL);
+
+        pusher->start(":memory:", "FIX.4.1", sockets[0]);
+        popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
+
+        fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
+        popper->pop(&len, &msgtype_offset, &msg);
+        rx_msg.imprint(msgtype_offset, msg);
+
+        n = 0;
+        do {
+                tag = rx_msg.next_field(value_length, &value);
+                if (!tag)
+                        break;
+
+                fail_unless(n < 14, NULL);
+                fail_unless(value_length == strlen(field_values[n]), NULL);
+                fail_unless(0 == memcmp(value, field_values[n], value_length), NULL);
+                ++n;
+        } while (0 < tag);
+        rx_msg.done();
+
+        pusher->stop();
+        popper->stop();
 }
 END_TEST
 
@@ -116,31 +192,31 @@ fixmsg_suite(void)
         /* Core test case */
         TCase *tc_core = tcase_create("Core");
 
-//        tcase_add_test(tc_core, test_FIX_Pusher_create);
+        tcase_add_test(tc_core, test_FIXMessageRX_resource_management);
+        tcase_add_test(tc_core, test_FIXMessageRX_next_field);
         suite_add_tcase(s, tc_core);
 
         return s;
 }
-#endif
 
 int
 main(int /*argc*/, char **/*argv*/)
 {
 
         int number_failed = 0;
-        // Suite *s = fixmsg_suite();
-        // SRunner *sr = srunner_create(s);
+        Suite *s = fixmsg_suite();
+        SRunner *sr = srunner_create(s);
 
-        // // initiate logging
-        // if (!init_logging(false, "check_fixmsg")) {
-        //         fprintf(stderr, "could not initiate logging\n");
-        //         return EXIT_FAILURE;
-        // }
+        // initiate logging
+        if (!init_logging(false, "check_fixmsg")) {
+                fprintf(stderr, "could not initiate logging\n");
+                return EXIT_FAILURE;
+        }
 
-        // // run the tests
-        // srunner_run_all(sr, CK_VERBOSE);
-        // number_failed = srunner_ntests_failed(sr);
-        // srunner_free(sr);
+        // run the tests
+        srunner_run_all(sr, CK_VERBOSE);
+        number_failed = srunner_ntests_failed(sr);
+        srunner_free(sr);
 
         return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

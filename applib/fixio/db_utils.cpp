@@ -48,12 +48,6 @@
 #include "stdlib/log/log.h"
 #include "db_utils.h"
 
-// #define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg BLOB)"
-// #define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp INTEGER DEFAULT CURRENT_TIMESTAMP, msg_type TEXT, partial_msg BLOB)"
-// #define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, msg) VALUES(?1, ?2)"
-// #define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, msg_type, partial_msg) VALUES(?1, ?2, ?3)"
-
-
 #define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg BLOB)"
 #define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg_type TEXT, partial_msg BLOB)"
 #define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg) VALUES(?1, ?2, ?3, ?4)"
@@ -79,12 +73,12 @@ MsgDB::open(void)
                 M_ALERT("could not open local database");
                 goto err;
         }
-	sqlite3_exec(db_, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);    
+        sqlite3_exec(db_, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not enable WAL");
-		/* continuing in default mode */
+                /* continuing in default mode */
         }
-    
+
         ret = sqlite3_exec(db_, CREATE_RECV_MSG_TABLE, NULL, NULL, &err_msg);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not create recv_msg table");
@@ -190,13 +184,13 @@ MsgDB::store_sent_msg(const uint64_t seqnum,
                       const char * const msg_type)
 {
         int ret;
-	struct timeval tval;
+        struct timeval tval;
 
         if (!db_)
                 return 0;
 
-	// ignore errors
-	gettimeofday(&tval, NULL);
+        // ignore errors
+        gettimeofday(&tval, NULL);
 
         ret = sqlite3_bind_int64(insert_sent_msg_statement, 1, seqnum);
         if (SQLITE_OK != ret) {
@@ -247,13 +241,13 @@ MsgDB::store_recv_msg(const uint64_t seqnum,
                       const uint8_t * const msg)
 {
         int ret;
-	struct timeval tval;
+        struct timeval tval;
 
         if (!db_)
                 return 0;
 
-	// ignore errors
-	gettimeofday(&tval, NULL);
+        // ignore errors
+        gettimeofday(&tval, NULL);
 
         ret = sqlite3_bind_int64(insert_recv_msg_statement, 1, seqnum);
         if (SQLITE_OK != ret) {
@@ -372,6 +366,3 @@ MsgDB::get_sent_msgs(uint64_t /*start*/,
 
         return retv;
 }
-
-
-

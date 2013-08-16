@@ -57,7 +57,7 @@
  * Hint to the compiler that an expression is likely to be false.
  */
 #ifdef UNLIKELY__
-#undef UNLIKELY__
+    #undef UNLIKELY__
 #endif
 #define UNLIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 0))
 
@@ -138,13 +138,13 @@ get_fix_tag(const char **str)
  */
 static inline long long
 get_fix_length_value(const char soh,
-		     const char *str)
+                     const char *str)
 {
         long long num = 0;
         char c = *str;
 
         do {
-		// the value must not be blank nor contain non-digits
+                // the value must not be blank nor contain non-digits
                 if (('0' > c) || ('9' < c))
                         return -1;
 

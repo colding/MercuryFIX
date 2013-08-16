@@ -57,15 +57,15 @@ public:
                 {
                 };
 
-	unsigned int tag(void);
+        unsigned int tag(void);
 
-	int value(size_t & len, uint8_t *value) const;
+        int value(size_t & len, uint8_t *value) const;
 private:
 };
 
 
 struct TagNode {
-	unsigned int tag; // FIX tag
-	size_t len;       // length of value in bytes 
-	uint8_t *value;   // FIX value
+        unsigned int tag; // FIX tag
+        size_t len;       // length of value in bytes
+        uint8_t *value;   // FIX value
 };

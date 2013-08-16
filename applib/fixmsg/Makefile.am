@@ -44,12 +44,15 @@ check_fixmsg_SOURCES = \
 	check_fixmsg.cpp \
 	fix_msg.h
 
-check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) $(MERCURY_CXXFLAGS)
+check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) -std=gnu++11 -ggdb
 check_fixmsg_LDADD = \
 	$(CHECK_LIBS) \
 	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
 	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
-	$(MERCURY_top_dir)/stdlib/log/liblog.la
+	$(MERCURY_top_dir)/stdlib/log/liblog.la \
+	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
+	$(MERCURY_top_dir)/stdlib/network/libnetwork.la \
+	$(MERCURY_top_dir)/stdlib/local_db/liblocaldb.la
 
 ##################################
 # What to clean boiler plate code

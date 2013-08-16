@@ -43,7 +43,7 @@
     #include "ac_config.h"
 #endif
 
-const struct FIX_Tag fix50_std_tags[] = 
+const struct FIX_Tag fix50_std_tags[] =
 {
         {1, ft_String},
         {2, ft_String},

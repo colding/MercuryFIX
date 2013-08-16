@@ -43,7 +43,7 @@
     #include "ac_config.h"
 #endif
 
-const struct FIX_Tag fix41_std_tags[] = 
+const struct FIX_Tag fix41_std_tags[] =
 {
         {1, ft_char},
         {2, ft_char},
@@ -254,7 +254,7 @@ const struct FIX_Tag fix41_std_tags[] =
         {0, ft_int}, // terminating 0 tag
 };
 
-const struct FIX_Tag fix41_std_data_tags[] = 
+const struct FIX_Tag fix41_std_data_tags[] =
 {
         {89, ft_data},
         {91, ft_data},
