@@ -162,6 +162,8 @@ get_fix_length_value(const char soh,
 /*
  * Optimized for integers less than 10.000.000.000.
  *
+ * Upon return, *str will point to the terminator character.
+ *
  * Performance notes:
  *
  * This function is more han 6 times faster than the equivalent one
@@ -170,12 +172,9 @@ get_fix_length_value(const char soh,
 static inline void
 uint_to_str(const char terminator,
             uint64_t value,
-            char * const str)
+            char **str)
 {
-        char tmp;
-        size_t retv = 0;
-        char *pos = str;
-        char *rstr = str;
+        char *pos = *str;
         int size = 0;
 
         if (value >= 10000) {
@@ -183,7 +182,10 @@ uint_to_str(const char terminator,
                         if (value >= 1000000000) {
                                 size = 10;
                                 if (value >= 10000000000) {
-                                        sprintf(str, "%llu", value);
+                                        sprintf(*str, "%llu", value);
+					while ('\0' != **str)
+						++(*str);
+					**str = terminator;
                                         return;
                                 }
                         } else if (value >= 100000000) {
@@ -216,7 +218,8 @@ uint_to_str(const char terminator,
                 }
         }
 
-        pos = str + size;
+	*str += size;
+	pos = *str;
         *pos = terminator;
 
         do {
