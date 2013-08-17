@@ -42,6 +42,7 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -155,4 +156,72 @@ get_fix_length_value(const char soh,
         } while (1);
 
         return num;
+}
+
+
+/*
+ * Optimized for integers less than 10.000.000.000.
+ *
+ * Performance notes:
+ *
+ * This function is more han 6 times faster than the equivalent one
+ * based on sprintf().
+ */
+static inline void
+uint_to_str(const char terminator,
+            uint64_t value,
+            char * const str)
+{
+        char tmp;
+        size_t retv = 0;
+        char *pos = str;
+        char *rstr = str;
+        int size = 0;
+
+        if (value >= 10000) {
+                if (value >= 10000000) {
+                        if (value >= 1000000000) {
+                                size = 10;
+                                if (value >= 10000000000) {
+                                        sprintf(str, "%llu", value);
+                                        return;
+                                }
+                        } else if (value >= 100000000) {
+                                size = 9;
+                        } else {
+                                size = 8;
+                        }
+                } else {
+                        if (value >= 1000000) {
+                                size = 7;
+                        } else if (value >= 100000) {
+                                size = 6;
+                        } else {
+                                size = 5;
+                        }
+                }
+        } else {
+                if (value >= 100) {
+                        if (value >= 1000) {
+                                size = 4;
+                        } else {
+                                size = 3;
+                        }
+                } else {
+                        if (value >= 10) {
+                                size = 2;
+                        } else {
+                                size = 1;
+                        }
+                }
+        }
+
+        pos = str + size;
+        *pos = terminator;
+
+        do {
+                *(--pos) = (char)('0' + (value % 10));
+        } while (value /= 10);
+
+        return;
 }
