@@ -47,19 +47,12 @@
 #include <string.h>
 #include <limits.h>
 #include <ctype.h>
+#include "stdlib/process/cpu.h"
 
 /*
  * NOTE: Test if moving these into the RX message class gives better
  * performance
  */
-
-/*
- * Hint to the compiler that an expression is likely to be false.
- */
-#ifdef UNLIKELY__
-    #undef UNLIKELY__
-#endif
-#define UNLIKELY__(expr__) (__builtin_expect(((expr__) ? 1 : 0), 0))
 
 // used to detect emminent integer overflow
 #define MAX_TAG__ ((int)((INT_MAX - 9) / 10))

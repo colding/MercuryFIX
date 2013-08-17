@@ -46,6 +46,7 @@
 #include <map>
 #include <stddef.h>
 #include <stdlib.h>
+#include "stdlib/disruptor/memsizes.h"
 #include "applib/fixmsg/fix_types.h"
 
 #define INITAL_TX_BUFFER_SIZE (2048)
@@ -60,17 +61,22 @@ class FIXMessageTX
 public:
         FIXMessageTX(const FIX_Version fix_version)
                 : fix_version_(fix_version),
-		  body_length_(0),
-		  msg_type_(fmt_CustomMsg),
 		  buf_size_(INITAL_TX_BUFFER_SIZE),
+		  length_(0),
 		  buf_(stdbuf_),
 		  extbuf_(NULL),
 		  pos_(buf_)
                 {
+			msg_type_[0] = '\0';
                 };
 
 	/*
-	 * Inserts a FIX field, in order, into the message.
+	 * Inserts a FIX field, in order, into the
+	 * message. insert_value() does not take ownership of the
+	 * memory pointed to by value. 
+	 *
+	 * len must not be bigger than (CACHE_LINE_SIZE - 1) if, and
+	 * only if, tag is 35 (MsgType).
 	 */
         int insert_field(const unsigned int tag,
 			 const size_t length,
@@ -80,10 +86,22 @@ public:
 	 * Exposes information required by FIX_PushBase::push(). The
 	 * first invocation of insert_field() after this method has
 	 * been invoked, will be inserting data into a blank message.
+	 *
+	 * expose() will fail if message type has not been inserted.
+         *
+	 * *msg_type will remain valid until a new message type is
+         * inserted using insert_field(). You may refrain from
+         * inserting a new message type if the message type hasn't
+         * changed since your previous expose().
+	 *
+	 * The message type is cached within the FIXMessageTX and only
+         * changed when overwritten by insert_field() of a new tag 35.
+	 *
+	 * Returns 1 (one) if all is well, 0 (zero) if not.
 	 */
-        void expose(size_t * const len,
-                    const uint8_t **data,
-                    const char **msg_type);
+        int expose(size_t & len,
+		   const uint8_t **data,
+		   const char **msg_type);
 
 private:
         ~FIXMessageTX()
@@ -92,9 +110,9 @@ private:
                 };
 
         const FIX_Version fix_version_;
-	size_t body_length_;	
-        FIX_MsgType msg_type_;
-        size_t buf_size_;
+        char msg_type_[CACHE_LINE_SIZE];
+	size_t buf_size_;
+        size_t length_;
 	uint8_t *buf_;
 	uint8_t *extbuf_;
 	uint8_t *pos_;

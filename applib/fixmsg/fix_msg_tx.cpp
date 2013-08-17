@@ -42,6 +42,7 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include "stdlib/process/cpu.h"
 
 /*
  * Inserts a FIX field, in order, into the message.
@@ -57,17 +58,20 @@ FIXMessageTX::insert_field(const unsigned int // tag
 	return 0;
 }
 
-/*
- * Exposes information required by FIX_PushBase::push(). The
- * first invocation of insert_field() after this method has
- * been invoked, will be inserting data into a blank message.
- */
-void
-FIXMessageTX::expose(size_t * const // len
-		     ,
-                     const uint8_t **// data
-		     ,
-                     const char **// msg_type
-	)
+int
+FIXMessageTX::expose(size_t & len,
+                     const uint8_t **data,
+                     const char **msg_type)
 {
+	if (UNLIKELY__('\0' == msg_type[0]))
+		return 0;
+
+	len = length_;
+	*data = buf_;
+	*msg_type = msg_type_;
+
+	length_ = 0;
+	buf_ = stdbuf_;
+
+	return 1;
 }
