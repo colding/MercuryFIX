@@ -48,7 +48,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include "stdlib/log/log.h"
-#include "fix_msg.h"
+#include "fixmsg.h"
 #include "applib/fixio/fixio.h"
 
 #define DELIM '|'

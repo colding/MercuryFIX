@@ -37,13 +37,13 @@
  * SUCH DAMAGE.
  */
 
-#include "fix_msg.h"
+#include "fixmsg.h"
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
-#include "fixmsg_utils.h"
 #include <stdio.h>
+#include "fixmsg_utils.h"
 
 int
 FIXMessageRX::field_contains_data(unsigned int tag)

@@ -49,7 +49,7 @@
 #include "stdlib/disruptor/memsizes.h"
 #include "applib/fixmsg/fix_types.h"
 
-#define INITAL_TX_BUFFER_SIZE (2048)
+#define INITIAL_TX_BUFFER_SIZE (2048)
 
 /*
  * FIXMessageTX will prepare a message for sending by the FIXIO
@@ -59,64 +59,81 @@
 class FIXMessageTX
 {
 public:
-        FIXMessageTX(const FIX_Version fix_version)
+        FIXMessageTX(const FIX_Version fix_version,
+                     const char soh)
                 : fix_version_(fix_version),
-		  buf_size_(INITAL_TX_BUFFER_SIZE),
-		  length_(0),
-		  buf_(stdbuf_),
-		  extbuf_(NULL),
-		  pos_(buf_)
+                  soh_(soh),
+                  buf_size_(INITIAL_TX_BUFFER_SIZE),
+                  length_(0),
+                  buf_(NULL),
+                  pos_(NULL)
                 {
-			msg_type_[0] = '\0';
+                        msg_type_[0] = '\0';
                 };
 
-	/*
-	 * Inserts a FIX field, in order, into the
-	 * message. insert_value() does not take ownership of the
-	 * memory pointed to by value. 
-	 *
-	 * len must not be bigger than (CACHE_LINE_SIZE - 1) if, and
-	 * only if, tag is 35 (MsgType).
-	 */
-        int insert_field(const unsigned int tag,
-			 const size_t length,
-			 const uint8_t *value);
-
-	/*
-	 * Exposes information required by FIX_PushBase::push(). The
-	 * first invocation of insert_field() after this method has
-	 * been invoked, will be inserting data into a blank message.
-	 *
-	 * expose() will fail if message type has not been inserted.
+        /*
+         * Must be invoked before an instance of this class is set to
+         * work. This is a heavy operation so objects of this class
+         * must be pooled. They are not cheap to create.
          *
-	 * *msg_type will remain valid until a new message type is
+         * Returns 1 (one) if all is well, 0 (zero) if not.
+         */
+        int init(void)
+                {
+                        buf_ = (uint8_t*)malloc(INITIAL_TX_BUFFER_SIZE);
+                        pos_ = buf_;
+
+                        return (buf_ ? 1 : 0);
+                };
+
+        /*
+         * Inserts a FIX field, in order, into the
+         * message. insert_value() does not take ownership of the
+         * memory pointed to by value.
+         *
+         * len must not be bigger than (CACHE_LINE_SIZE - 1) if, and
+         * only if, tag is 35 (MsgType).
+         *
+         * Returns 1 (one) if all is well, 0 (zero) if not.
+         */
+        int insert_field(const unsigned int tag,
+                         const size_t length,
+                         const uint8_t *value);
+
+        /*
+         * Exposes information required by FIX_PushBase::push(). The
+         * first invocation of insert_field() after this method has
+         * been invoked, will be inserting data into a blank message.
+         *
+         * expose() will fail if message type has not been inserted.
+         *
+         * *msg_type will remain valid until a new message type is
          * inserted using insert_field(). You may refrain from
          * inserting a new message type if the message type hasn't
          * changed since your previous expose().
-	 *
-	 * The message type is cached within the FIXMessageTX and only
+         *
+         * The message type is cached within the FIXMessageTX and only
          * changed when overwritten by insert_field() of a new tag 35.
-	 *
-	 * Returns 1 (one) if all is well, 0 (zero) if not.
-	 */
+         *
+         * Returns 1 (one) if all is well, 0 (zero) if not.
+         */
         int expose(size_t & len,
-		   const uint8_t **data,
-		   const char **msg_type);
+                   const uint8_t **data,
+                   const char **msg_type);
 
 private:
         ~FIXMessageTX()
                 {
-			free(extbuf_);
+                        free(buf_);
                 };
 
         const FIX_Version fix_version_;
+        const char soh_;
         char msg_type_[CACHE_LINE_SIZE];
-	size_t buf_size_;
+        size_t buf_size_;
         size_t length_;
-	uint8_t *buf_;
-	uint8_t *extbuf_;
-	uint8_t *pos_;
-        uint8_t stdbuf_[INITAL_TX_BUFFER_SIZE];
+        uint8_t *buf_;
+        uint8_t *pos_;
 };
 
 /*
