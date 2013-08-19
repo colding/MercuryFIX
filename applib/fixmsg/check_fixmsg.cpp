@@ -47,8 +47,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include "stdlib/log/log.h"
 #include "fixmsg.h"
+#include "stdlib/log/log.h"
 #include "applib/fixio/fixio.h"
 
 #define DELIM '|'
@@ -59,13 +59,13 @@
 static const char *partial_messages[2] =
 {
         "|49=BANZAI|95=00004|91=1|9||52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
-        "|49=BANZAI|95=4|91=1|9||52=20121105-23:25:25|56=EXEC|95=7|91=1| d=3||11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|95=4|96=1|9||52=20121105-23:25:25|56=EXEC|95=7|91=1| d=3||11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
 };
 
 /*
  * Extracted field values of partial_messages[1] above
  */
-static const char *field_values[14] =
+static const char *field_values[15] =
 {
         "FOOBAR",
         "1",
@@ -81,6 +81,55 @@ static const char *field_values[14] =
         "1352157912357",
         "1",
         "SPY",
+        NULL,
+};
+
+struct field_value
+{
+        unsigned int tag;
+        const char *value;
+};
+
+/*
+ * Partial test messages for TX class testing
+ */
+static const char *partial_messages_tx[2] =
+{
+        "|49=BANZAI|27=hdyyst k|95=4|91=1|9||52=20121105-23:25:16|56=EXEC|11=1352157916437|38=10000|41=1352157912357|54=1|55=SPY|10=",
+        "|49=BANZAI|95=4|96=1|9||52=20121105-23:25:25|56=EXEC|95=7|91=1| d=3||11=1352157925309|38=10000|41=1352157912357|54=1|55=SPY|10=",
+};
+
+struct field_value test_fields_0[] =
+{
+        {49, "BANZAI"},
+        {27, "hdyyst k"},
+        {95, "4"},
+        {91, "1|9|"},
+        {52, "20121105-23:25:16"},
+        {56, "EXEC"},
+        {11, "1352157916437"},
+        {38, "10000"},
+        {41, "1352157912357"},
+        {54, "1"},
+        {55, "SPY"},
+        {0, NULL},
+};
+
+struct field_value test_fields_1[] =
+{
+        {49, "BANZAI"},
+        {95, "4"},
+        {96, "1|9|"},
+        {52, "20121105-23:25:25"},
+        {56, "EXEC"},
+        {95, "7"},
+        {91, "1| d=3|"},
+        {11, "1352157925309"},
+        {38, "10000"},
+        {41, "1352157912357"},
+        {54, "1"},
+        {55, "SPY"},
+        {0, NULL},
 };
 
 /*
@@ -184,6 +233,61 @@ START_TEST(test_FIXMessageRX_next_field)
 }
 END_TEST
 
+
+/*
+ * Test imprint() and done().
+ */
+START_TEST(test_FIXMessageTX_composition)
+{
+        int n;
+        uint8_t *value;
+        size_t len;
+        const uint8_t *data;
+        const char *msg_type;
+        FIXMessageTX tx_msg(DELIM);
+
+        fail_unless(1 == tx_msg.init(), NULL);
+
+        //
+        // set msg type and append fields
+        //
+        fail_unless(1 == tx_msg.append_field(35, strlen("FOOBAR"), (const uint8_t*)"FOOBAR"), NULL);
+        n = 0;
+        while (test_fields_0[n].tag) {
+                fail_unless(1 == tx_msg.append_field(test_fields_0[n].tag, strlen(test_fields_0[n].value), (const uint8_t*)test_fields_0[n].value), NULL);
+                ++n;
+        }
+        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(0 == memcmp(data, partial_messages_tx[0], len), NULL);
+        fail_unless(0 == strcmp("FOOBAR", msg_type), NULL);
+
+        //
+        // new message type and new message
+        //
+        fail_unless(1 == tx_msg.append_field(35, strlen("8"), (const uint8_t*)"8"), NULL);
+        n = 0;
+        while (test_fields_1[n].tag) {
+                fail_unless(1 == tx_msg.append_field(test_fields_1[n].tag, strlen(test_fields_1[n].value), (const uint8_t*)test_fields_1[n].value), NULL);
+                ++n;
+        }
+        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(0 == memcmp(data, partial_messages_tx[1], len), NULL);
+        fail_unless(0 == strcmp("8", msg_type), NULL);
+
+        //
+        // keep the message type but feed it a new message
+        //
+        n = 0;
+        while (test_fields_0[n].tag) {
+                fail_unless(1 == tx_msg.append_field(test_fields_0[n].tag, strlen(test_fields_0[n].value), (const uint8_t*)test_fields_0[n].value), NULL);
+                ++n;
+        }
+        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(0 == memcmp(data, partial_messages_tx[0], len), NULL);
+        fail_unless(0 == strcmp("8", msg_type), NULL);
+}
+END_TEST
+
 Suite*
 fixmsg_suite(void)
 {
@@ -194,6 +298,7 @@ fixmsg_suite(void)
 
         tcase_add_test(tc_core, test_FIXMessageRX_resource_management);
         tcase_add_test(tc_core, test_FIXMessageRX_next_field);
+        tcase_add_test(tc_core, test_FIXMessageTX_composition);
         suite_add_tcase(s, tc_core);
 
         return s;

@@ -42,14 +42,12 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include "stdlib/log/log.h"
 #include "stdlib/process/cpu.h"
 #include "applib/fixmsg/fixmsg_utils.h"
 
-/*
- * Inserts a FIX field, in order, into the message.
- */
 int
-FIXMessageTX::insert_field(const unsigned int tag,
+FIXMessageTX::append_field(const unsigned int tag,
                            const size_t length,
                            const uint8_t *value)
 {
@@ -60,7 +58,7 @@ FIXMessageTX::insert_field(const unsigned int tag,
                 // not and we need to do it with a minimum of
                 // effort. So... I'm making a best effort guess here.
                 //
-                // I'll (rather safely I think) assume that "tag=" is
+                // I'll assume (rather safely I think) that "tag=" is
                 // never more than 21 characters long. Than I'm adding
                 // that to "length + 4" ("4" needed to make room for
                 // "<SOH>10="). If that makes the buffer overflow,
@@ -68,7 +66,6 @@ FIXMessageTX::insert_field(const unsigned int tag,
 
         again:
                 if (25 + length <= buf_size_) {
-                        ++pos_;
                         uint_to_str('=', tag, (char**)&pos_);
                         ++pos_;
 
@@ -108,16 +105,17 @@ FIXMessageTX::expose(size_t & len,
 {
         if (msg_type[0]) {
                 // tack on "10="
-                *(pos_ + 1) = '1';
-                *(pos_ + 2) = '0';
-                *(pos_ + 3) = '=';
+                *(pos_) = '1';
+                *(pos_ + 1) = '0';
+                *(pos_ + 2) = '=';
 
-                len = length_;
+                len = length_ + 3;
                 *data = buf_;
                 *msg_type = msg_type_;
 
-                length_ = 0;
-                pos_ = buf_;
+                // don't overwrite leading SOH
+                length_ = 1;
+                pos_ = buf_ + 1;
         } else {
                 return 0;
         }

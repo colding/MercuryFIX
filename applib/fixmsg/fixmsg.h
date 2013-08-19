@@ -44,6 +44,7 @@
 #endif
 #include <set>
 #include <map>
+#include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include "stdlib/disruptor/memsizes.h"
@@ -59,16 +60,19 @@
 class FIXMessageTX
 {
 public:
-        FIXMessageTX(const FIX_Version fix_version,
-                     const char soh)
-                : fix_version_(fix_version),
-                  soh_(soh),
+        FIXMessageTX(const char soh)
+                : soh_(soh),
                   buf_size_(INITIAL_TX_BUFFER_SIZE),
                   length_(0),
                   buf_(NULL),
                   pos_(NULL)
                 {
                         msg_type_[0] = '\0';
+                };
+
+        ~FIXMessageTX()
+                {
+                        free(buf_);
                 };
 
         /*
@@ -82,12 +86,17 @@ public:
                 {
                         buf_ = (uint8_t*)malloc(INITIAL_TX_BUFFER_SIZE);
                         pos_ = buf_;
-
+                        if (pos_) {
+                                memset(buf_, 'A', INITIAL_TX_BUFFER_SIZE);
+                                *pos_ = soh_;
+                                length_ = 1;
+                                ++pos_;
+                        }
                         return (buf_ ? 1 : 0);
                 };
 
         /*
-         * Inserts a FIX field, in order, into the
+         * Appends a FIX field, in order, into the
          * message. insert_value() does not take ownership of the
          * memory pointed to by value.
          *
@@ -96,7 +105,7 @@ public:
          *
          * Returns 1 (one) if all is well, 0 (zero) if not.
          */
-        int insert_field(const unsigned int tag,
+        int append_field(const unsigned int tag,
                          const size_t length,
                          const uint8_t *value);
 
@@ -122,12 +131,6 @@ public:
                    const char **msg_type);
 
 private:
-        ~FIXMessageTX()
-                {
-                        free(buf_);
-                };
-
-        const FIX_Version fix_version_;
         const char soh_;
         char msg_type_[CACHE_LINE_SIZE];
         size_t buf_size_;
