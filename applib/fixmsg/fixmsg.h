@@ -87,11 +87,11 @@ public:
                         buf_ = (uint8_t*)malloc(INITIAL_TX_BUFFER_SIZE);
                         pos_ = buf_;
                         if (pos_) {
-                                memset(buf_, 'A', INITIAL_TX_BUFFER_SIZE);
                                 *pos_ = soh_;
                                 length_ = 1;
                                 ++pos_;
                         }
+
                         return (buf_ ? 1 : 0);
                 };
 
