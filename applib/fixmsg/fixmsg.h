@@ -62,7 +62,7 @@ class FIXMessageTX
 public:
         FIXMessageTX(const char soh)
                 : soh_(soh),
-                  buf_size_(INITIAL_TX_BUFFER_SIZE),
+                  buf_size_(0),
                   length_(0),
                   buf_(NULL),
                   pos_(NULL)
@@ -87,6 +87,7 @@ public:
                         buf_ = (uint8_t*)malloc(INITIAL_TX_BUFFER_SIZE);
                         pos_ = buf_;
                         if (pos_) {
+				buf_size_ = INITIAL_TX_BUFFER_SIZE;
                                 *pos_ = soh_;
                                 length_ = 1;
                                 ++pos_;
