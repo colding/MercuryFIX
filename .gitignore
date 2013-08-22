@@ -12,6 +12,7 @@
 *.sent*
 *.recv*
 .DS_Store
+a.out
 test_*
 TAGS
 Makefile
