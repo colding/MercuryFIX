@@ -82,7 +82,7 @@
  *   to hold an entire message, as         and the size of it)
  *   entries)
  *
- *                           Reads in turn from fast, slow and session disruptor and writes to sink <== start()/stop() invokes here
+ *      Reads in turn from fast, slow and session disruptor and writes to sink <== start()/stop() invokes here
  *
  *                                   File descriptor data sink - Data flows down here
  *
@@ -137,6 +137,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <sys/time.h>
 
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
@@ -453,7 +454,9 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         total_prefix_length = *args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
 
         // build message
-        sprintf(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, "%s%lu%c35=%s%c34=%llu", args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
+        sprintf(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length,
+                "%s%lu%c35=%s%c34=%llu",
+                args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
         *(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
 
         // add final checksum
@@ -798,10 +801,12 @@ err:
 }
 
 int
-FIX_Pusher::push(const size_t len,
+FIX_Pusher::push(const struct timeval * const ttl,
+                 const size_t len,
                  const uint8_t * const data,
                  const char * const msg_type)
 {
+        struct timeval time_to_live;
         struct cursor_t alfa_cursor;
         struct alfa_entry_t *alfa_entry;
         struct cursor_t bravo_cursor;
@@ -810,6 +815,15 @@ FIX_Pusher::push(const size_t len,
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
+
+        /* calculate resend expire time */
+        gettimeofday(&time_to_live, NULL);
+        time_to_live.tv_sec += ttl->tv_sec;
+        time_to_live.tv_usec += ttl->tv_usec;
+        if (time_to_live.tv_usec >= 1000000) {
+                time_to_live.tv_usec -= 1000000;
+                ++time_to_live.tv_sec;
+        }
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
@@ -856,16 +870,28 @@ FIX_Pusher::push(const size_t len,
  * Only called from one thread
  */
 int
-FIX_Pusher::session_push(const size_t len,
+FIX_Pusher::session_push(const struct timeval * const ttl,
+                         const size_t len,
                          const uint8_t * const data,
                          const char * const msg_type)
 {
+        struct timeval time_to_live;
         struct cursor_t charlie_cursor;
         struct charlie_entry_t *charlie_entry;
         const size_t strl = strnlen(msg_type, FIX_BUFFER_RESERVED_HEAD);
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
+
+        /* calculate resend expire time */
+        gettimeofday(&time_to_live, NULL);
+        time_to_live.tv_sec += ttl->tv_sec;
+        time_to_live.tv_usec += ttl->tv_usec;
+        if (time_to_live.tv_usec >= 1000000) {
+                time_to_live.tv_usec -= 1000000;
+                ++time_to_live.tv_sec;
+        }
+
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (UNLIKELY(len > (charlie_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {

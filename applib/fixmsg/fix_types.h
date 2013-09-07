@@ -46,7 +46,8 @@
 
 enum FIX_Version : unsigned int
 {
-        FIX_4_0 = 0,
+	CUSTOM = 0, // this will allow a custom messaging protocol to be build on top of the Mercury FIX engine
+        FIX_4_0,
         FIX_4_1,
         FIX_4_2,
         FIX_4_3,
@@ -60,6 +61,7 @@ enum FIX_Version : unsigned int
 
 const char fix_version_string[FIX_VERSION_TYPES_COUNT][16] =
 {
+	"CUSTOM",
         "FIX.4.0",
         "FIX.4.1",
         "FIX.4.2",
@@ -143,7 +145,7 @@ extern const struct FIX_Tag fixt11_std_data_tags[];
 
 enum FIX_MsgType : uint_fast32_t
 {
-        fmt_CustomMsg = 0, // no checking, and fields are appended in the order they are added to the message
+        fmt_CustomMsg = 0, // hmm, maybe I really don't need this?
         fmt_Heartbeat,
         fmt_TestRequest,
         fmt_ResendRequest,

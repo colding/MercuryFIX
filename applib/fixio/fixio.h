@@ -95,11 +95,17 @@ class FIX_PushBase
          * The mentioned tags will be added be the push function and
          * so will the checksum value.
          *
-         * len is the size of data in bytes.
-         * data is a pointer to a partial FIX message.
-         * msg_type is the tag 35 message type value.
+	 * ttl: Time To Live, message will not be resend if ttl has
+	 *      passed.
+	 *
+         * len: The size of data in bytes.
+	 *
+         * data: A pointer to a partial FIX message.
+	 *
+         * msg_type: The tag 35 message type value.
          */
-        virtual int push(const size_t len,
+        virtual int push(const struct timeval * const ttl,
+			 const size_t len,
                          const uint8_t * const data,
                          const char * const msg_type) = 0;
 
@@ -107,8 +113,11 @@ class FIX_PushBase
          * Please see FIX_PushBase::push() for the data format.
          *
          * Only one thread must call this method.
+	 *
+	 * Parameters as in push().
          */
-        virtual int session_push(const size_t len,
+        virtual int session_push(const struct timeval * const ttl,
+				 const size_t len,
                                  const uint8_t * const data,
                                  const char * const msg_type) = 0;
 };
@@ -150,11 +159,17 @@ public:
          * The mentioned tags will be added be the push function and
          * so will the checksum value.
          *
-         * len is the size of data in bytes.
-         * data is a pointer to a partial FIX message.
-         * msg_type is the tag 35 message type value.
+	 * ttl: Time To Live, message will not be resend if ttl has
+	 *      passed.
+	 *
+         * len: The size of data in bytes.
+	 *
+         * data: A pointer to a partial FIX message.
+	 *
+         * msg_type: The tag 35 message type value.
          */
-        int push(const size_t len,
+        int push(const struct timeval * const ttl,
+		 const size_t len,
                  const uint8_t * const data,
                  const char * const msg_type);
 
@@ -162,8 +177,11 @@ public:
          * Please see FIX_Pusher::push() for the data format.
          *
          * Only one thread must call this method.
+	 *
+	 * Parameters as in push().
          */
-        int session_push(const size_t len,
+        int session_push(const struct timeval * const ttl,
+			 const size_t len,
                          const uint8_t * const data,
                          const char * const msg_type);
 

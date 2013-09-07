@@ -155,6 +155,7 @@ START_TEST(test_FIXMessageRX_resource_management)
         uint8_t *msg;
         FIXMessageRX rx_msg = FIXMessageRX::make_fix_message_mem_owner_on_stack(FIX_4_1, DELIM);
 
+	const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -168,7 +169,7 @@ START_TEST(test_FIXMessageRX_resource_management)
         popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
 
         for (n = 0; n < 2; ++n) {
-                fail_unless(0 == pusher->push(strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == pusher->push(&ttl, strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
                 popper->pop(&len, &msgtype_offset, &msg);
                 rx_msg.imprint(msgtype_offset, msg);
 
@@ -199,6 +200,7 @@ START_TEST(test_FIXMessageRX_next_field)
         uint8_t *msg;
         FIXMessageRX rx_msg = FIXMessageRX::make_fix_message_mem_owner_on_stack(FIX_4_1, DELIM);
 
+	const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -211,7 +213,7 @@ START_TEST(test_FIXMessageRX_next_field)
         pusher->start(":memory:", "FIX.4.1", sockets[0]);
         popper->start(":memory:", "FIX.4.1", NULL, sockets[1]);
 
-        fail_unless(0 == pusher->push(strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
+        fail_unless(0 == pusher->push(&ttl, strlen(partial_messages[1]), (const uint8_t *)partial_messages[1], message_types[1]), NULL);
         popper->pop(&len, &msgtype_offset, &msg);
         rx_msg.imprint(msgtype_offset, msg);
 
@@ -291,7 +293,7 @@ END_TEST
 Suite*
 fixmsg_suite(void)
 {
-        Suite *s = suite_create ("FIX MSG");
+        Suite *s = suite_create("FIX MSG");
 
         /* Core test case */
         TCase *tc_core = tcase_create("Core");
