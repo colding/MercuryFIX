@@ -280,6 +280,7 @@ DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
 #define BRAVO_QUEUE_LENGTH (128) // MUST be a power of two
 #define BRAVO_ENTRY_PROCESSORS (1)
 struct bravo_t {
+        size_t allocated_size;
         size_t size;
         uint8_t *data;
 };
@@ -843,26 +844,29 @@ FIX_Pusher::push(const struct timeval * const ttl,
                 bravo_publisher_next_entry_blocking(bravo_, &bravo_cursor);
                 bravo_entry = bravo_ring_buffer_acquire_entry(bravo_, &bravo_cursor);
 
-                // either the first time and therefore NULL or
+                // Either the first time and therefore NULL or
                 // something allocated from a previous parse. So we
                 // reuse or allocate new memory. This migth lead to
                 // some interresting memory pressure once it has run
                 // for a while...
-                if (bravo_entry->content.size >= len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
-                        bravo_entry->content.size = len;
-                } else {
+		// 
+		// The sizeof(uint32_t) header is dead data but needs
+		// to be there to offset the message data correctly
+                if (bravo_entry->content.allocated_size < len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) { // for "+ FIX_BUFFER_RESERVED_TAIL" see above
                         free(bravo_entry->content.data);
-                        bravo_entry->content.data = (uint8_t*)malloc(len + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL); // for "+ FIX_BUFFER_RESERVED_TAIL" see above
-                        if (UNLIKELY(!bravo_entry->content.data)) {
+                        bravo_entry->content.data = (uint8_t*)malloc(len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL);
+                        if (bravo_entry->content.data) {
+                                bravo_entry->content.allocated_size = len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL;
+                        } else {
+                                bravo_entry->content.allocated_size = 0;
                                 bravo_entry->content.size = 0;
                                 bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
                                 return ENOMEM;
-                        } else {
-                                bravo_entry->content.size = len;
                         }
                 }
+		bravo_entry->content.size = len;
                 strcpy((char*)bravo_entry->content.data, msg_type);
-                memcpy(bravo_entry->content.data + FIX_BUFFER_RESERVED_HEAD, data, len);
+                memcpy(bravo_entry->content.data + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, bravo_entry->content.size);
 
                 bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
         }
