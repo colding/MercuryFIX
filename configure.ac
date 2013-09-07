@@ -83,7 +83,7 @@ AC_FUNC_FORK
 #
 
 # Check for (4 <= sizeof(int)) - Assumed in many places
-AC_MSG_CHECKING([for 4 <= sizeof(int)])
+AC_MSG_CHECKING([for (4 <= sizeof(int))])
 AC_RUN_IFELSE(
 	[AC_LANG_PROGRAM(
 		[[
@@ -103,6 +103,31 @@ AC_RUN_IFELSE(
 	[
 		AC_MSG_RESULT([no])
 		AC_MSG_FAILURE([sizeof(int) has to be at least 4 bytes])
+	]
+)
+
+# Check for (8 >= sizeof(time_t)) and (8 >= sizeof(suseconds_t))
+# Assumed when storing struct timeval in sent messages database.
+AC_MSG_CHECKING([for (8 >= sizeof(time_t)) and (8 >= sizeof(suseconds_t))])
+AC_RUN_IFELSE(
+	[AC_LANG_PROGRAM(
+		[[
+			#include <unistd.h>
+		]],
+		[[
+			return ((8 >= sizeof(time_t)) && (8 >= sizeof(suseconds_t))) ? 0 : 1;
+		]]
+	)],
+	[
+		AC_MSG_RESULT([ok])
+	],
+	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([sizeof(time_t) and sizeof(suseconds_t) must both be no more than 8 bytes])
+	],
+	[
+		AC_MSG_RESULT([no])
+		AC_MSG_FAILURE([sizeof(time_t) and sizeof(suseconds_t) must both be no more than 8 bytes])
 	]
 )
 

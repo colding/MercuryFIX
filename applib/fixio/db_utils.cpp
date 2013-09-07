@@ -49,11 +49,32 @@
 #include "db_utils.h"
 
 #define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg BLOB)"
-#define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg_type TEXT, partial_msg BLOB)"
+#define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, ttl_seconds INTEGER, ttl_useconds INTEGER, msg_type TEXT, partial_msg_length INTEGER, partial_msg BLOB)"
+
 #define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg) VALUES(?1, ?2, ?3, ?4)"
-#define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg_type, partial_msg) VALUES(?1, ?2, ?3, ?4, ?5)"
+#define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+
 #define SELECT_MAX_RECV_SEQNUM "SELECT MAX(seqnum) FROM RECV_MESSAGES"
 #define SELECT_MAX_SENT_SEQNUM "SELECT MAX(seqnum) FROM SENT_MESSAGES"
+
+/*
+ * Returns 1 (one) if now os greater than ttl, 0 (zero) otherwise.
+ */
+static inline int
+is_ttl_expired(const time_t ttl_tv_sec,
+               const suseconds_t ttl_tv_usec)
+{
+        struct timeval now;
+
+        gettimeofday(&now, NULL);
+        if (now.tv_sec > ttl_tv_sec)
+                return 1;
+
+        if (now.tv_sec < ttl_tv_sec)
+                return 0;
+
+        return (now.tv_usec > ttl_tv_usec) ? 1 : 0;
+}
 
 
 int
@@ -91,25 +112,25 @@ MsgDB::open(void)
                 goto err;
         }
 
-        ret = sqlite3_prepare_v2(db_, INSERT_RECV_MESSAGE, -1,  &insert_recv_msg_statement, NULL);
+        ret = sqlite3_prepare_v2(db_, INSERT_RECV_MESSAGE, -1,  &insert_recv_msg_statement_, NULL);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not prepare insert recv msg statement");
                 goto err;
         }
 
-        ret = sqlite3_prepare_v2(db_, INSERT_SENT_MESSAGE, -1,  &insert_sent_msg_statement, NULL);
+        ret = sqlite3_prepare_v2(db_, INSERT_SENT_MESSAGE, -1,  &insert_sent_msg_statement_, NULL);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not prepare insert recv msg statement");
                 goto err;
         }
 
-        ret = sqlite3_prepare_v2(db_, SELECT_MAX_RECV_SEQNUM, -1,  &max_recv_seqnum_statement, NULL);
+        ret = sqlite3_prepare_v2(db_, SELECT_MAX_RECV_SEQNUM, -1,  &max_recv_seqnum_statement_, NULL);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not prepare max recv seqnum statement");
                 goto err;
         }
 
-        ret = sqlite3_prepare_v2(db_, SELECT_MAX_SENT_SEQNUM, -1,  &max_sent_seqnum_statement, NULL);
+        ret = sqlite3_prepare_v2(db_, SELECT_MAX_SENT_SEQNUM, -1,  &max_sent_seqnum_statement_, NULL);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not prepare max sent seqnum statement");
                 goto err;
@@ -143,14 +164,14 @@ MsgDB::close(void)
         if (!db_)
                 return 1;
 
-        sqlite3_finalize(insert_recv_msg_statement);
-        sqlite3_finalize(insert_sent_msg_statement);
-        sqlite3_finalize(max_recv_seqnum_statement);
-        sqlite3_finalize(max_sent_seqnum_statement);
-        insert_recv_msg_statement = NULL;
-        insert_sent_msg_statement = NULL;
-        max_recv_seqnum_statement = NULL;
-        max_sent_seqnum_statement = NULL;
+        sqlite3_finalize(insert_recv_msg_statement_);
+        sqlite3_finalize(insert_sent_msg_statement_);
+        sqlite3_finalize(max_recv_seqnum_statement_);
+        sqlite3_finalize(max_sent_seqnum_statement_);
+        insert_recv_msg_statement_ = NULL;
+        insert_sent_msg_statement_ = NULL;
+        max_recv_seqnum_statement_ = NULL;
+        max_sent_seqnum_statement_ = NULL;
 
 close_db:
         ret = sqlite3_close(db_);
@@ -180,6 +201,8 @@ close_db:
 int
 MsgDB::store_sent_msg(const uint64_t seqnum,
                       const uint64_t len,
+                      const uint64_t ttl_tv_sec,
+                      const uint64_t ttl_tv_usec,
                       const uint8_t * const msg,
                       const char * const msg_type)
 {
@@ -192,45 +215,63 @@ MsgDB::store_sent_msg(const uint64_t seqnum,
         // ignore errors
         gettimeofday(&tval, NULL);
 
-        ret = sqlite3_bind_int64(insert_sent_msg_statement, 1, seqnum);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 1, seqnum);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_int64(insert_sent_msg_statement, 2, tval.tv_sec);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 2, (uint64_t)tval.tv_sec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_int64(insert_sent_msg_statement, 3, tval.tv_usec);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 3, (uint64_t)tval.tv_usec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_text(insert_sent_msg_statement, 4, msg_type, -1, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 4, ttl_tv_sec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_blob(insert_sent_msg_statement, 5, msg, len, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 5, ttl_tv_usec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_step(insert_sent_msg_statement);
+        ret = sqlite3_bind_text(insert_sent_msg_statement_, 6, msg_type, -1, SQLITE_TRANSIENT);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 7, len);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_bind_blob(insert_sent_msg_statement_, 8, msg, len, SQLITE_TRANSIENT);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not bind into sent msg statement: %s", sqlite3_errstr(ret));
+                goto out;
+        }
+
+        ret = sqlite3_step(insert_sent_msg_statement_);
         if (SQLITE_DONE != ret) {
                 M_ALERT("could not step sent msg statement: (%d) %s - %s", ret, sqlite3_errstr(ret), sqlite3_errmsg(db_));
                 goto out;
         }
 
 out:
-        sqlite3_clear_bindings(insert_sent_msg_statement);
-        sqlite3_reset(insert_sent_msg_statement);
+        sqlite3_clear_bindings(insert_sent_msg_statement_);
+        sqlite3_reset(insert_sent_msg_statement_);
 
         return ((SQLITE_DONE == ret) ? 1 : 0);
 }
@@ -249,39 +290,39 @@ MsgDB::store_recv_msg(const uint64_t seqnum,
         // ignore errors
         gettimeofday(&tval, NULL);
 
-        ret = sqlite3_bind_int64(insert_recv_msg_statement, 1, seqnum);
+        ret = sqlite3_bind_int64(insert_recv_msg_statement_, 1, seqnum);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_int64(insert_sent_msg_statement, 2, tval.tv_sec);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 2, tval.tv_sec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_int64(insert_sent_msg_statement, 3, tval.tv_usec);
+        ret = sqlite3_bind_int64(insert_sent_msg_statement_, 3, tval.tv_usec);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_bind_blob(insert_recv_msg_statement, 4, msg, len, SQLITE_TRANSIENT);
+        ret = sqlite3_bind_blob(insert_recv_msg_statement_, 4, msg, len, SQLITE_TRANSIENT);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not bind into recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
-        ret = sqlite3_step(insert_recv_msg_statement);
+        ret = sqlite3_step(insert_recv_msg_statement_);
         if (SQLITE_DONE != ret) {
                 M_ALERT("could not step recv msg statement: %s", sqlite3_errstr(ret));
                 goto out;
         }
 
 out:
-        sqlite3_clear_bindings(insert_recv_msg_statement);
-        sqlite3_reset(insert_recv_msg_statement);
+        sqlite3_clear_bindings(insert_recv_msg_statement_);
+        sqlite3_reset(insert_recv_msg_statement_);
 
         return ((SQLITE_DONE == ret) ? 1 : 0);
 }
@@ -294,7 +335,7 @@ MsgDB::get_latest_recv_seqnum(uint64_t & seqnum) const
         if (!db_)
                 return 0;
 
-        ret = sqlite3_step(max_recv_seqnum_statement);
+        ret = sqlite3_step(max_recv_seqnum_statement_);
         switch (ret) {
         case SQLITE_ROW:
                 break;
@@ -305,13 +346,13 @@ MsgDB::get_latest_recv_seqnum(uint64_t & seqnum) const
                 M_ALERT("error getting latest recv seqnum");
                 goto err;
         }
-        seqnum = sqlite3_column_int64(max_recv_seqnum_statement, 0);
+        seqnum = sqlite3_column_int64(max_recv_seqnum_statement_, 0);
 out:
-        sqlite3_reset(max_recv_seqnum_statement);
+        sqlite3_reset(max_recv_seqnum_statement_);
         return 1;
 
 err:
-        sqlite3_reset(max_recv_seqnum_statement);
+        sqlite3_reset(max_recv_seqnum_statement_);
         M_ALERT("could not get latest recv seqnum: %s", sqlite3_errstr(ret));
         return 0;
 }
@@ -321,7 +362,7 @@ MsgDB::get_latest_sent_seqnum(uint64_t & seqnum) const
 {
         int ret;
 
-        ret = sqlite3_step(max_sent_seqnum_statement);
+        ret = sqlite3_step(max_sent_seqnum_statement_);
         switch (ret) {
         case SQLITE_ROW:
                 break;
@@ -332,15 +373,83 @@ MsgDB::get_latest_sent_seqnum(uint64_t & seqnum) const
                 M_ALERT("error getting latest sent seqnum");
                 goto err;
         }
-        seqnum = sqlite3_column_int64(max_sent_seqnum_statement, 0);
+        seqnum = sqlite3_column_int64(max_sent_seqnum_statement_, 0);
 out:
-        sqlite3_reset(max_sent_seqnum_statement);
+        sqlite3_reset(max_sent_seqnum_statement_);
         return 1;
 
 err:
-        sqlite3_reset(max_sent_seqnum_statement);
+        sqlite3_reset(max_sent_seqnum_statement_);
         M_ALERT("could not get latest sent seqnum: %s", sqlite3_errstr(ret));
         return 0;
+}
+
+PartialMessageList*
+MsgDB::get_sent_msgs(uint64_t start,
+                     uint64_t end) const
+{
+        static const char *select_fmt = "SELECT ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg FROM SENT_MESSAGES WHERE seqnum >= %llu AND seqnum <= %llu";
+        PartialMessageList *retv = NULL;
+        PartialMessage *pmsg = NULL;
+        sqlite3_stmt *select_statement = NULL;
+        char select_str[256];
+        time_t ttl_sec;
+        suseconds_t ttl_usec;
+        int ret;
+        const void *part_msg = NULL;
+
+        if (!db_)
+                return NULL;
+
+        sprintf(select_str, select_fmt, start, end);
+        ret = sqlite3_prepare_v2(db_, select_str, -1,  &select_statement, NULL);
+        if (SQLITE_OK != ret) {
+                M_ALERT("could not prepare select sent messages statement: ret = %d", ret);
+                goto out;
+        }
+        retv = new (std::nothrow) PartialMessageList;
+        if (!retv)
+                goto out;
+
+        do {
+                ret = sqlite3_step(select_statement);
+                switch (ret) {
+                case SQLITE_ROW:
+                        break;
+                case SQLITE_BUSY:
+                        continue;
+                case SQLITE_DONE:
+                        goto out;
+                default:
+                        M_ALERT("error selecting sent messages: ret = %d", ret);
+                        goto out;
+                }
+
+                ttl_sec = (time_t)sqlite3_column_int64(select_statement, 0);
+                ttl_usec = (suseconds_t)sqlite3_column_int64(select_statement, 1);
+                if (is_ttl_expired(ttl_sec, ttl_usec))
+                        continue;
+
+                pmsg = new (std::nothrow) PartialMessage;
+                if (!pmsg) {
+                        delete retv;
+                        retv = NULL;
+                        goto out;
+                }
+                pmsg->msg_type = strdup((const char*)sqlite3_column_text(select_statement, 2));
+                pmsg->length = sqlite3_column_int64(select_statement, 3);
+                pmsg->part_msg = (uint8_t*)malloc(pmsg->length);
+                part_msg = sqlite3_column_blob(select_statement, 4);
+                memcpy((void*)pmsg->part_msg, (const uint8_t*)part_msg, pmsg->length);
+
+                retv->push_back(pmsg);
+                pmsg = NULL;
+        } while (1);
+
+out:
+        sqlite3_finalize(select_statement);
+
+        return retv;
 }
 
 std::vector<std::vector<uint8_t> >*
@@ -348,18 +457,6 @@ MsgDB::get_recv_msgs(uint64_t /*start*/,
                      uint64_t /*end*/) const
 {
         std::vector<std::vector<uint8_t> > *retv = NULL;
-
-        if (!db_)
-                return NULL;
-
-        return retv;
-}
-
-std::vector<MsgDB::PartialMessage>*
-MsgDB::get_sent_msgs(uint64_t /*start*/,
-                     uint64_t /*end*/) const
-{
-        std::vector<MsgDB::PartialMessage> *retv = NULL;
 
         if (!db_)
                 return NULL;

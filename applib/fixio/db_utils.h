@@ -41,7 +41,7 @@
 
 #include <inttypes.h>
 #include <string.h>
-#include <pthread.h>
+//#include <pthread.h>
 #include <vector>
 #include <string>
 
@@ -50,23 +50,69 @@
 #endif
 #include "stdlib/local_db/sqlite3.h"
 
+class PartialMessage {
+public:
+	PartialMessage() 
+		: length(0), 
+		  msg_type(NULL),
+		  part_msg(NULL)
+		{
+		};
+
+	~PartialMessage()
+		{
+			free(msg_type);
+			free(part_msg);
+		};
+
+	uint32_t length;
+	char *msg_type;
+	uint8_t *part_msg;
+};
+
+class PartialMessageList {
+public:
+	~PartialMessageList()
+		{
+			unsigned int n;
+
+			for (n = 0; n < list_.size(); ++n)
+				delete list_[n];
+		};
+
+	size_t size(void) const
+		{
+			return list_.size();
+		};
+
+	void push_back(PartialMessage *pmsg)
+		{
+			list_.push_back(pmsg);
+		};
+
+	const PartialMessage *get_at(const unsigned int n) const
+		{
+			if (n > (list_.size() - 1))
+				return NULL;
+
+			return list_[n];
+		};
+
+private:
+	std::vector<PartialMessage*> list_;
+};
+
 class MsgDB {
 public:
-        class PartialMessage {
-        public:
-                uint64_t SeqNum;
-                std::string MsgType;
-                std::vector<uint8_t> MsgBody;
-        };
 
         MsgDB(void)
+		: db_(NULL),
+		  db_path_(NULL),
+		  insert_recv_msg_statement_(NULL),
+		  insert_sent_msg_statement_(NULL),
+		  max_recv_seqnum_statement_(NULL),
+		  max_sent_seqnum_statement_(NULL)
                 {
-                        db_ = NULL;
-                        db_path_ = NULL;
-                        insert_recv_msg_statement = NULL;
-                        insert_sent_msg_statement = NULL;
-                        max_recv_seqnum_statement = NULL;
-                        max_sent_seqnum_statement = NULL;
                 };
 
         ~MsgDB()
@@ -113,6 +159,8 @@ public:
          */
         int store_sent_msg(const uint64_t seqnum,
                            const uint64_t len,
+			   const uint64_t ttl_tv_sec,
+			   const uint64_t ttl_tv_usec,
                            const uint8_t * const msg,
                            const char * const msg_type);
 
@@ -156,8 +204,12 @@ public:
          * This method is not performance critical (re-sending is a
          * fairly rare occurrence) and the implementation reflects
          * that.
+	 *
+	 * Only messages within their respective TTL will be returned.
+	 *
+	 * Memory allocation errors will result in NULL being returned.
          */
-        std::vector<MsgDB::PartialMessage> *get_sent_msgs(uint64_t start, uint64_t end) const;
+        PartialMessageList *get_sent_msgs(uint64_t start, uint64_t end) const;
 
         /*
          * Returns a vector of previously recieved complete messages
@@ -175,8 +227,8 @@ public:
 private:
         sqlite3 *db_;
         char *db_path_;
-        sqlite3_stmt *insert_recv_msg_statement;
-        sqlite3_stmt *insert_sent_msg_statement;
-        sqlite3_stmt *max_recv_seqnum_statement;
-        sqlite3_stmt *max_sent_seqnum_statement;
+        sqlite3_stmt *insert_recv_msg_statement_;
+        sqlite3_stmt *insert_sent_msg_statement_;
+        sqlite3_stmt *max_recv_seqnum_statement_;
+        sqlite3_stmt *max_sent_seqnum_statement_;
 };

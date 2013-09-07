@@ -151,10 +151,46 @@
 #include "stack_utils.h"
 
 /*
- * Reserved initial space for the tags 8, 9, 35 and 34 in the FIX standard
- * header in push buffers.
+ * Layout of FIX pusher data buffer:
+ *
+ * Offset
+ * -   Data
+ * ===========================
+ *
+ * Offset: 0
+ * -   uint32_t containing length of partial message
+ *
+ * Offset: sizeof(uint32_t)
+ * -   start of FIX_BUFFER_RESERVED_HEAD
+ *
+ * Offset: sizeof(uint32_t). Defined as MSG_TYPE_STRING_OFFSET
+ * -   MSG_TYPE_MAX_LENGTH bytes reseved for the zero terminated message type string
+ *
+ * Offset: sizeof(uint32_t) + MSG_TYPE_MAX_LENGTH. Defined as TV_SEC_OFFSET
+ * -   tv_sec member of struct time_val. Part of resend expire time.
+ *
+ * Offset: sizeof(uint32_t) + MSG_TYPE_MAX_LENGTH + sizeof(uint64_t). Defined as TV_USEC_OFFSET
+ * -   tv_usec member of struct time_val. Part of resend expire time.
+ *
+ * Offset: sizeof(uint32_t) + MSG_TYPE_MAX_LENGTH + sizeof(uint64_t) + sizeof(uint64_t)
+ * -   start of reserved memory for FIX header in-situ operations
  */
-#define FIX_BUFFER_RESERVED_HEAD (128)
+
+/*
+ * Reserved initial space for in-situ composing of the tags 8, 9, 35
+ * and 34 in the FIX standard header in push buffers.
+ *
+ * And - the first MSG_TYPE_MAX_LENGTH holds the zero terminated message type string
+ * And - the next 16 bytes holds the resend expire time.
+ */
+#define FIX_BUFFER_RESERVED_HEAD (256)
+
+/*
+ * Offset definitions. Please see explanation above.
+ */
+#define MSG_TYPE_STRING_OFFSET (sizeof(uint32_t))
+#define TV_SEC_OFFSET (sizeof(uint32_t) + MSG_TYPE_MAX_LENGTH)
+#define TV_USEC_OFFSET (sizeof(uint32_t) + MSG_TYPE_MAX_LENGTH + sizeof(uint64_t))
 
 /*
  * Reserved terminal space for the checksum and terminating SOH
@@ -163,8 +199,8 @@
 #define FIX_BUFFER_RESERVED_TAIL (4)
 
 /*
- * The maximum length in bytes for the message type string, tag
- * 35. The terminating null character is not included in the count.
+ * The maximum size in bytes for the message type string, tag
+ * 35. The terminating null character is included in the count.
  */
 #define MSG_TYPE_MAX_LENGTH (16)
 
@@ -181,6 +217,132 @@ struct pusher_thread_args_t {
         int *FIX_start_length;
         char soh;
 };
+
+/*
+ * Content of alfa, bravo and charlie disruptor entries:
+ *
+ * - sizeof(uint32_t) bytes holding the length of partial FIX message
+ * - Then FIX_BUFFER_RESERVED_HEAD bytes which holds the message type
+ *   in the begining and which will later serve as working area when
+ *   the complete FIX message is put together.
+ *
+ * - The partial FIX message begins at: entry + sizeof(uint32_t)
+ *   + FIX_BUFFER_RESERVED_HEAD
+ *
+ * - There is always at least FIX_BUFFER_RESERVED_TAIL bytes left in the end to hold the
+ *   checksum and terminating <SOH>.
+ */
+
+/*
+ * Alfa) Many publishers, one entry processor, 4K entry size, 1024 entries
+ *
+ */
+#define ALFA_QUEUE_LENGTH (1024) // MUST be a power of two
+#define ALFA_ENTRY_PROCESSORS (1)
+#define ALFA_ENTRY_SIZE (1024*4)
+#define ALFA_MAX_DATA_SIZE (ALFA_ENTRY_SIZE - sizeof(uint32_t))
+typedef uint8_t alfa_t[ALFA_ENTRY_SIZE];
+
+DEFINE_ENTRY_TYPE(alfa_t, alfa_entry_t);
+DEFINE_RING_BUFFER_TYPE(ALFA_ENTRY_PROCESSORS, ALFA_QUEUE_LENGTH, alfa_entry_t, alfa_io_t);
+DEFINE_RING_BUFFER_MALLOC(alfa_io_t, alfa_);
+DEFINE_RING_BUFFER_INIT(ALFA_QUEUE_LENGTH, alfa_io_t, alfa_);
+DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(alfa_entry_t, alfa_io_t, alfa_);
+DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(alfa_entry_t, alfa_io_t, alfa_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
+
+/*
+ * Bravo) Many publishers, one entry processor,
+ * sizeof(size_t)+sizeof(char*) entry size, 128 entries
+ */
+#define BRAVO_QUEUE_LENGTH (128) // MUST be a power of two
+#define BRAVO_ENTRY_PROCESSORS (1)
+struct bravo_t {
+        size_t allocated_size;
+        uint8_t *data;
+};
+
+DEFINE_ENTRY_TYPE(struct bravo_t, bravo_entry_t);
+DEFINE_RING_BUFFER_TYPE(BRAVO_ENTRY_PROCESSORS, BRAVO_QUEUE_LENGTH, bravo_entry_t, bravo_io_t);
+DEFINE_RING_BUFFER_MALLOC(bravo_io_t, bravo_);
+DEFINE_RING_BUFFER_INIT(BRAVO_QUEUE_LENGTH, bravo_io_t, bravo_);
+DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(bravo_entry_t, bravo_io_t, bravo_);
+DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(bravo_entry_t, bravo_io_t, bravo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
+
+/*
+ * Charlie) One publisher, one entry processor, 512 byte entry size,
+ * 512 entries
+ *
+ */
+#define CHARLIE_QUEUE_LENGTH (512) // MUST be a power of two
+#define CHARLIE_ENTRY_PROCESSORS (1)
+#define CHARLIE_ENTRY_SIZE (512)
+#define CHARLIE_MAX_DATA_SIZE (CHARLIE_ENTRY_SIZE - sizeof(uint32_t))
+typedef uint8_t charlie_t[CHARLIE_ENTRY_SIZE];
+
+DEFINE_ENTRY_TYPE(charlie_t, charlie_entry_t);
+DEFINE_RING_BUFFER_TYPE(CHARLIE_ENTRY_PROCESSORS, CHARLIE_QUEUE_LENGTH, charlie_entry_t, charlie_io_t);
+DEFINE_RING_BUFFER_MALLOC(charlie_io_t, charlie_);
+DEFINE_RING_BUFFER_INIT(CHARLIE_QUEUE_LENGTH, charlie_io_t, charlie_);
+DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(charlie_entry_t, charlie_io_t, charlie_);
+DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(charlie_entry_t, charlie_io_t, charlie_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+
+static inline uint32_t
+get_length_of_partial_msg(uint8_t * const push_buffer)
+{
+        return getu32(push_buffer);
+}
+
+static inline void
+set_length_of_partial_msg(uint8_t * const push_buffer,
+                          const uint32_t len)
+{
+        setu32(push_buffer, len);
+}
+
+static inline void
+set_msg_type(uint8_t * const push_buffer,
+             const char * const msg_type)
+{
+        strcpy((char*)push_buffer + MSG_TYPE_STRING_OFFSET, msg_type);
+}
+
+static inline void
+set_ttl(uint8_t * const push_buffer,
+        const struct timeval * const ttl)
+{
+        setu64(push_buffer + TV_SEC_OFFSET, (uint64_t)ttl->tv_sec);
+        setu64(push_buffer + TV_USEC_OFFSET, (uint64_t)ttl->tv_usec);
+}
+
+static inline void
+get_ttl(uint8_t * const push_buffer,
+        uint64_t & ttl_tv_sec,
+        uint64_t & ttl_tv_usec)
+{
+        ttl_tv_sec = getu64(push_buffer + TV_SEC_OFFSET);
+        ttl_tv_usec = getu64(push_buffer + TV_USEC_OFFSET);
+}
 
 /*
  * OK, this is butt ugly, but I need a fast, not a pretty,
@@ -233,96 +395,6 @@ get_digit_count(const uint64_t num)
 
         return 0;
 }
-
-/*
- * Content of alfa, bravo and charlie disruptor entries:
- *
- * - sizeof(uint32_t) bytes holding the length of partial FIX message
- * - Then FIX_BUFFER_RESERVED_HEAD bytes which holds the message type
- *   in the begining and which will later serve as working area when
- *   the complete FIX message is put together.
- *
- * - The partial FIX message begins at: entry + sizeof(uint32_t)
- *   + FIX_BUFFER_RESERVED_HEAD
- *
- * - There is always at least FIX_BUFFER_RESERVED_TAIL bytes left in the end to hold the
- *   checksum and terminating <SOH>.
- */
-
-/*
- * Alfa) Many publishers, one entry processor, 4K entry size, 1024 entries
- *
- */
-#define ALFA_QUEUE_LENGTH (1024) // MUST be a power of two
-#define ALFA_ENTRY_PROCESSORS (1)
-#define ALFA_ENTRY_SIZE (1024*4)
-#define ALFA_MAX_DATA_SIZE (ALFA_ENTRY_SIZE - sizeof(uint32_t))
-typedef uint8_t alfa_t[ALFA_ENTRY_SIZE];
-
-DEFINE_ENTRY_TYPE(alfa_t, alfa_entry_t);
-DEFINE_RING_BUFFER_TYPE(ALFA_ENTRY_PROCESSORS, ALFA_QUEUE_LENGTH, alfa_entry_t, alfa_io_t);
-DEFINE_RING_BUFFER_MALLOC(alfa_io_t, alfa_);
-DEFINE_RING_BUFFER_INIT(ALFA_QUEUE_LENGTH, alfa_io_t, alfa_);
-DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(alfa_entry_t, alfa_io_t, alfa_);
-DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(alfa_entry_t, alfa_io_t, alfa_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
-DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(alfa_io_t, alfa_);
-
-/*
- * Bravo) Many publishers, one entry processor,
- * sizeof(size_t)+sizeof(char*) entry size, 128 entries
- */
-#define BRAVO_QUEUE_LENGTH (128) // MUST be a power of two
-#define BRAVO_ENTRY_PROCESSORS (1)
-struct bravo_t {
-        size_t allocated_size;
-        size_t size;
-        uint8_t *data;
-};
-
-DEFINE_ENTRY_TYPE(struct bravo_t, bravo_entry_t);
-DEFINE_RING_BUFFER_TYPE(BRAVO_ENTRY_PROCESSORS, BRAVO_QUEUE_LENGTH, bravo_entry_t, bravo_io_t);
-DEFINE_RING_BUFFER_MALLOC(bravo_io_t, bravo_);
-DEFINE_RING_BUFFER_INIT(BRAVO_QUEUE_LENGTH, bravo_io_t, bravo_);
-DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(bravo_entry_t, bravo_io_t, bravo_);
-DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(bravo_entry_t, bravo_io_t, bravo_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
-DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(bravo_io_t, bravo_);
-
-/*
- * Charlie) One publisher, one entry processor, 512 byte entry size,
- * 512 entries
- *
- */
-#define CHARLIE_QUEUE_LENGTH (512) // MUST be a power of two
-#define CHARLIE_ENTRY_PROCESSORS (1)
-#define CHARLIE_ENTRY_SIZE (512)
-#define CHARLIE_MAX_DATA_SIZE (CHARLIE_ENTRY_SIZE - sizeof(uint32_t))
-typedef uint8_t charlie_t[CHARLIE_ENTRY_SIZE];
-
-DEFINE_ENTRY_TYPE(charlie_t, charlie_entry_t);
-DEFINE_RING_BUFFER_TYPE(CHARLIE_ENTRY_PROCESSORS, CHARLIE_QUEUE_LENGTH, charlie_entry_t, charlie_io_t);
-DEFINE_RING_BUFFER_MALLOC(charlie_io_t, charlie_);
-DEFINE_RING_BUFFER_INIT(CHARLIE_QUEUE_LENGTH, charlie_io_t, charlie_);
-DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(charlie_entry_t, charlie_io_t, charlie_);
-DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(charlie_entry_t, charlie_io_t, charlie_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
-DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 
 static int
 do_writev(int fd,
@@ -434,44 +506,50 @@ complete_FIX_message(uint64_t * const msg_seq_number,
         int msg_seq_number_digits;
         unsigned int checksum;
         char * const buf = (char*)buffer;
+        uint64_t ttl_tv_sec;
+        uint64_t ttl_tv_usec;
 
         ++(*msg_seq_number);
         msg_seq_number_digits = get_digit_count(*msg_seq_number);
 
+        get_ttl(buffer, ttl_tv_sec, ttl_tv_usec);
+
         args->db->store_sent_msg(*msg_seq_number,
                                  *msg_length,
-                                 buffer + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD,
-                                 (char*)buffer + sizeof(uint32_t));
+                                 ttl_tv_sec,
+                                 ttl_tv_usec,
+                                 buffer + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD,
+                                 (char*)buffer + MSG_TYPE_STRING_OFFSET);
 
         // We must construct the prefix string,
         // e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
         // the body length. The body length fills a variable amount of
         // characters, therefore we must know it beforehand.
         body_length =
-                + 3                                /* 35= */
-                + strlen((buf + sizeof(uint32_t))) /* msg type */
-                + 1                                /* <SOH> */
-                + 3                                /* 34= */
-                + msg_seq_number_digits            /* digits in sequence number */
-                + *msg_length                      /* length of partial FIX message */
-                - 3;                               /* the 3 bytes comprising "10=" in the end of the partial FIX message must not be included in the body length */
+                + 3                                    /* 35= */
+                + strlen(buf + MSG_TYPE_STRING_OFFSET) /* msg type */
+                + 1                                    /* <SOH> */
+                + 3                                    /* 34= */
+                + msg_seq_number_digits                /* digits in sequence number */
+                + *msg_length                          /* length of partial FIX message */
+                - 3;                                   /* the 3 bytes comprising "10=" in the end of the partial FIX message must not be included in the body length */
         body_length_digits = get_digit_count(body_length);
-        total_prefix_length = *args->FIX_start_length + body_length_digits + 1  + strlen(buf + sizeof(uint32_t)) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
+        total_prefix_length = *args->FIX_start_length + body_length_digits + 1  + strlen(buf + MSG_TYPE_STRING_OFFSET) + 1 + get_digit_count(*msg_seq_number) + strlen("35=34=");
 
         // build message
-        sprintf(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length,
+        sprintf(buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD - total_prefix_length,
                 "%s%lu%c35=%s%c34=%llu",
-                args->FIX_start, body_length, args->soh, buf + sizeof(uint32_t), args->soh, *msg_seq_number);
-        *(buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD) = args->soh;
+                args->FIX_start, body_length, args->soh, buf + MSG_TYPE_STRING_OFFSET, args->soh, *msg_seq_number);
+        *(buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD) = args->soh;
 
         // add final checksum
-        checksum = get_FIX_checksum((uint8_t*)buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
-        sprintf((buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + *msg_length), "%03u%c", checksum, args->soh);
+        checksum = get_FIX_checksum((uint8_t*)buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
+        sprintf((buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + *msg_length), "%03u%c", checksum, args->soh);
 
         // adjust data length to new value
         *msg_length += total_prefix_length + 4; // 4 is CHK<SOH>
 
-        return (buf + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD - total_prefix_length);
+        return (buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD - total_prefix_length);
 }
 
 static int
@@ -494,7 +572,7 @@ push_alfa(struct cursor_t * const alfa_cursor,
                 total = 0;
                 for (n.sequence = alfa_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         alfa_entry = alfa_ring_buffer_acquire_entry(args->alfa, &n);
-                        vdata[idx].iov_len = getu32(alfa_entry->content); // length of partial message
+                        vdata[idx].iov_len = get_length_of_partial_msg(alfa_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, alfa_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
@@ -541,7 +619,7 @@ push_bravo(struct cursor_t * const bravo_cursor,
                 for (n.sequence = bravo_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         bravo_entry = bravo_ring_buffer_acquire_entry(args->bravo, &n);
 
-                        vdata[idx].iov_len = bravo_entry->content.size;
+                        vdata[idx].iov_len = get_length_of_partial_msg(bravo_entry->content.data);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, bravo_entry->content.data, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
@@ -587,7 +665,7 @@ push_charlie(struct cursor_t * const charlie_cursor,
                 total = 0;
                 for (n.sequence = charlie_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         charlie_entry = charlie_ring_buffer_acquire_entry(args->charlie, &n);
-                        vdata[idx].iov_len = getu32(charlie_entry->content);
+                        vdata[idx].iov_len = get_length_of_partial_msg(charlie_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, charlie_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
 
@@ -816,7 +894,7 @@ FIX_Pusher::push(const struct timeval * const ttl,
         struct alfa_entry_t *alfa_entry;
         struct cursor_t bravo_cursor;
         struct bravo_entry_t *bravo_entry;
-        const size_t strl = strnlen(msg_type, FIX_BUFFER_RESERVED_HEAD);
+        const size_t strl = strnlen(msg_type, MSG_TYPE_MAX_LENGTH + 1) + 1;
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
@@ -831,13 +909,14 @@ FIX_Pusher::push(const struct timeval * const ttl,
         }
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
-        if (LIKELY(len <= (alfa_max_data_length_ - sizeof(uint32_t) - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
+        if (len <= (alfa_max_data_length_ - MSG_TYPE_STRING_OFFSET - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL)) {
                 alfa_publisher_next_entry_blocking(alfa_, &alfa_cursor);
                 alfa_entry = alfa_ring_buffer_acquire_entry(alfa_, &alfa_cursor);
 
-                setu32(alfa_entry->content, len);
-                strcpy((char*)alfa_entry->content + sizeof(uint32_t), msg_type);
-                memcpy(alfa_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
+                set_length_of_partial_msg(alfa_entry->content, len);
+                set_msg_type(alfa_entry->content, msg_type);
+                set_ttl(alfa_entry->content, &time_to_live);
+                memcpy(alfa_entry->content + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD, data, len);
 
                 alfa_publisher_commit_entry_blocking(alfa_, &alfa_cursor);
         } else {
@@ -849,24 +928,25 @@ FIX_Pusher::push(const struct timeval * const ttl,
                 // reuse or allocate new memory. This migth lead to
                 // some interresting memory pressure once it has run
                 // for a while...
-		// 
-		// The sizeof(uint32_t) header is dead data but needs
-		// to be there to offset the message data correctly
-                if (bravo_entry->content.allocated_size < len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) { // for "+ FIX_BUFFER_RESERVED_TAIL" see above
+                //
+                // The sizeof(uint32_t) (a.k.a MSG_TYPE_STRING_OFFSET)
+                // header is dead data but needs to be there to offset
+                // the message data correctly
+                if (bravo_entry->content.allocated_size < len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
                         free(bravo_entry->content.data);
-                        bravo_entry->content.data = (uint8_t*)malloc(len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL);
+                        bravo_entry->content.data = (uint8_t*)malloc(len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL);
                         if (bravo_entry->content.data) {
-                                bravo_entry->content.allocated_size = len + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL;
+                                bravo_entry->content.allocated_size = len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL;
                         } else {
                                 bravo_entry->content.allocated_size = 0;
-                                bravo_entry->content.size = 0;
                                 bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
                                 return ENOMEM;
                         }
                 }
-		bravo_entry->content.size = len;
-                strcpy((char*)bravo_entry->content.data, msg_type);
-                memcpy(bravo_entry->content.data + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, bravo_entry->content.size);
+                set_length_of_partial_msg(bravo_entry->content.data, len);
+                set_msg_type(bravo_entry->content.data, msg_type);
+                set_ttl(bravo_entry->content.data, &time_to_live);
+                memcpy(bravo_entry->content.data + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD, data, len);
 
                 bravo_publisher_commit_entry_blocking(bravo_, &bravo_cursor);
         }
@@ -886,7 +966,7 @@ FIX_Pusher::session_push(const struct timeval * const ttl,
         struct timeval time_to_live;
         struct cursor_t charlie_cursor;
         struct charlie_entry_t *charlie_entry;
-        const size_t strl = strnlen(msg_type, FIX_BUFFER_RESERVED_HEAD);
+        const size_t strl = strnlen(msg_type, MSG_TYPE_MAX_LENGTH + 1) + 1;
 
         if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
                 return EINVAL;
@@ -901,17 +981,19 @@ FIX_Pusher::session_push(const struct timeval * const ttl,
         }
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
-        if (UNLIKELY(len > (charlie_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
-                M_CRITICAL("session message oversized");
-        } else {
+        if (len <= (charlie_max_data_length_ - MSG_TYPE_STRING_OFFSET - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL)) {
                 charlie_publisher_next_entry_blocking(charlie_, &charlie_cursor);
                 charlie_entry = charlie_ring_buffer_acquire_entry(charlie_, &charlie_cursor);
 
-                setu32(charlie_entry->content, len);
-                strcpy((char*)charlie_entry->content + sizeof(uint32_t), msg_type);
-                memcpy(charlie_entry->content + sizeof(uint32_t) + FIX_BUFFER_RESERVED_HEAD, data, len);
+                set_length_of_partial_msg(charlie_entry->content, len);
+                set_msg_type(charlie_entry->content, msg_type);
+                set_ttl(charlie_entry->content, &time_to_live);
+                memcpy(charlie_entry->content + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD, data, len);
 
                 charlie_publisher_commit_entry_blocking(charlie_, &charlie_cursor);
+        } else {
+                M_CRITICAL("session message oversized");
+                return EINVAL;
         }
 
         return get_flag(&error_);

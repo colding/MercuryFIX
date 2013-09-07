@@ -409,7 +409,7 @@ START_TEST(test_message_database)
         fail_unless(0 == num);
         num = 0xDEADBEEF;
 
-        fail_unless(1 == db.store_sent_msg(12, strlen(noise[3]), (const uint8_t*)noise[3], "A"));
+        fail_unless(1 == db.store_sent_msg(12, strlen(noise[3]), 0, 0, (const uint8_t*)noise[3], "A"));
         fail_unless(1 == db.get_latest_sent_seqnum(num));
         fail_unless(12 == num);
         num = 0xDEADBEEF;
@@ -437,7 +437,7 @@ START_TEST(test_FIX_start_stop)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -495,7 +495,7 @@ START_TEST(test_FIX_change_version)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -551,7 +551,7 @@ START_TEST(test_FIX_send_and_recv_sequentially)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -578,13 +578,78 @@ END_TEST
 /*
  * Test send and recieve of test messages sequentially
  */
+START_TEST(test_FIX_retrieve_sent)
+{
+        int n;
+        uint32_t len;
+        uint32_t msgtype_offset;
+        uint8_t *msg;
+        const struct timeval ttl = { 10, 0 };
+        FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
+        FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
+        int sockets[2] = { -1, -1 };
+        MsgDB db;
+        const char * const db_path = "23E19F70-616C-4551-BB0E-2EF61EFB9474.db";
+        PartialMessageList *pmsg_list;
+        const PartialMessage *pmsg;
+
+        remove(db_path);
+
+        fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
+        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == popper->init(), NULL);
+        pusher->start(db_path, "FIX.4.1", sockets[0]);
+        popper->start(db_path, "FIX.4.1", NULL, sockets[1]);
+
+        for (n = 0; n < 16; ++n) {
+                fail_unless(0 == pusher->push(&ttl, strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
+                fail_unless(len == strlen(complete_messages[n]), NULL);
+                fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
+                free(msg);
+        }
+        pusher->stop();
+        popper->stop();
+
+        fail_unless(1 == db.set_db_path(db_path), NULL);
+        fail_unless(1 == db.open(), NULL);
+
+        pmsg_list = db.get_sent_msgs(0, 1);
+        fail_unless(NULL != pmsg_list, NULL);
+        fail_unless(1 == pmsg_list->size(), NULL);
+        delete pmsg_list;
+
+        pmsg_list = db.get_sent_msgs(1, 100);
+        fail_unless(NULL != pmsg_list, NULL);
+        fail_unless(16 == pmsg_list->size(), NULL);
+        delete pmsg_list;
+
+        pmsg_list = db.get_sent_msgs(1, 16);
+        fail_unless(NULL != pmsg_list, NULL);
+        fail_unless(16 == pmsg_list->size(), NULL);
+        for (n = 0; n < 16; ++n) {
+                pmsg = pmsg_list->get_at(n);
+                fail_unless(NULL != pmsg);
+                fail_unless(0 == memcmp(partial_messages[n], pmsg->part_msg, pmsg->length), NULL);
+                fail_unless(0 == strcmp(message_types[n], pmsg->msg_type), NULL);
+        }
+        delete pmsg_list;
+
+        fail_unless(1 == db.close());
+        remove(db_path);
+}
+END_TEST
+
+/*
+ * Test send and recieve of test messages sequentially
+ */
 START_TEST(test_FIX_send_and_recv_session_messages_sequentially)
 {
         int n;
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -618,7 +683,7 @@ START_TEST(test_FIX_lockfree_sequentially)
         struct cursor_t cursor;
         struct count_t reg_number;
         std::queue<struct FIX_Popper::RawMessage> messages;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -662,7 +727,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -740,7 +805,7 @@ START_TEST(test_FIX_send_and_recv_session_and_non_session_messages_with_noise)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -823,7 +888,7 @@ START_TEST(test_FIX_send_and_recv_sequentially_with_noise)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -858,7 +923,7 @@ START_TEST(test_FIX_send_and_recv_in_bursts)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -895,7 +960,7 @@ START_TEST(test_FIX_send_and_recv_eratically)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t *msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -1046,7 +1111,7 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t*msg;
-	const struct timeval ttl = { 0, 0 };
+        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -1079,7 +1144,7 @@ fixio_suite(void)
         /* Core test case */
         TCase *tc_core = tcase_create("Core");
 
-        tcase_set_timeout(tc_core, 4);
+        tcase_set_timeout(tc_core, 20);
 
         tcase_add_test(tc_core, test_FIX_Pusher_create);
         tcase_add_test(tc_core, test_FIX_Popper_create);
@@ -1092,6 +1157,7 @@ fixio_suite(void)
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages);
         tcase_add_test(tc_core, test_FIX_send_and_recv_session_and_non_session_messages_with_noise);
         tcase_add_test(tc_core, test_FIX_send_and_recv_sequentially_with_noise);
+        tcase_add_test(tc_core, test_FIX_retrieve_sent);
         tcase_add_test(tc_core, test_FIX_send_and_recv_in_bursts);
         tcase_add_test(tc_core, test_FIX_send_and_recv_eratically);
         tcase_add_test(tc_core, test_FIX_challenge_buffer_boundaries_overflow);
