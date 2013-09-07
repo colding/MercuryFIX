@@ -384,9 +384,13 @@ do_writev(int fd,
  * And must end with:
  *   <SOH>10=
  *
+ * Sample partial FIX message ('|' represents <SOH>):
+ *
+ *    |49=BANZAI|52=20121105-23:24:37|56=EXEC|10=
+ *
  * Sample complete FIX message ('|' represents <SOH>):
  *
- * 8=FIX.4.1|9=49|35=0|34=2|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=228
+ *    8=FIX.4.1|9=49|35=0|34=2|49=BANZAI|52=20121105-23:24:37|56=EXEC|10=228
  *
  * data_length is number of bytes in the partial FIX message contained
  * in buffer. On return it will be the total length of the completed
@@ -420,7 +424,7 @@ do_writev(int fd,
 static const char*
 complete_FIX_message(uint64_t * const msg_seq_number,
                      uint8_t * const buffer,
-                     size_t *msg_length,
+                     size_t * const msg_length,
                      const struct pusher_thread_args_t * const args)
 {
         size_t body_length;
@@ -440,8 +444,8 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 
         // We must construct the prefix string,
         // e.g. "8=FIX.4.1|9=49|35=0". So one thing we must know is
-        // the body length. The body length fills a variable amont of
-        // characters therefore we must know it beforehand.
+        // the body length. The body length fills a variable amount of
+        // characters, therefore we must know it beforehand.
         body_length =
                 + 3                                /* 35= */
                 + strlen((buf + sizeof(uint32_t))) /* msg type */
@@ -891,7 +895,6 @@ FIX_Pusher::session_push(const struct timeval * const ttl,
                 time_to_live.tv_usec -= 1000000;
                 ++time_to_live.tv_sec;
         }
-
 
         /* the "- FIX_BUFFER_RESERVED_TAIL" is because we need room for the checksum and the final delimiter */
         if (UNLIKELY(len > (charlie_max_data_length_ - FIX_BUFFER_RESERVED_HEAD - FIX_BUFFER_RESERVED_TAIL))) {
