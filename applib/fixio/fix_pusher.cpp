@@ -931,7 +931,8 @@ FIX_Pusher::push(const struct timeval * const ttl,
                 //
                 // The sizeof(uint32_t) (a.k.a MSG_TYPE_STRING_OFFSET)
                 // header is dead data but needs to be there to offset
-                // the message data correctly
+                // the message data correctly, due to the data length
+                // being encoded into these 4 bytes.
                 if (bravo_entry->content.allocated_size < len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
                         free(bravo_entry->content.data);
                         bravo_entry->content.data = (uint8_t*)malloc(len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL);

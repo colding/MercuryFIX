@@ -61,8 +61,9 @@ FIXMessageTX::append_field(const unsigned int tag,
                 // I'll assume (rather safely I think) that "tag=" is
                 // never more than 21 characters long. Than I'm adding
                 // that to "length + 4" ("4" needed to make room for
-                // "<SOH>10="). If that makes the buffer overflow,
-                // I'll reallocate.
+                // "<SOH>10=").
+		//
+		// If that makes the buffer overflow, I'll reallocate.
 
         again:
                 if (25 + length <= buf_size_) {
