@@ -90,6 +90,11 @@ public:
 			list_.push_back(pmsg);
 		};
 
+	/*
+	 * Returns message number n. If the message in question has
+	 * exceeded its time to live, then a NULL will be
+	 * returned. NULL will also be returned if n >= size().
+	 */ 
 	const PartialMessage *get_at(const unsigned int n) const
 		{
 			if (n > (list_.size() - 1))
@@ -205,7 +210,9 @@ public:
          * fairly rare occurrence) and the implementation reflects
          * that.
 	 *
-	 * Only messages within their respective TTL will be returned.
+	 * Only messages within their respective TTL will be
+	 * returned. Messages which has exceeded their time to live
+	 * will be returned as NULL.
 	 *
 	 * Memory allocation errors will result in NULL being returned.
          */

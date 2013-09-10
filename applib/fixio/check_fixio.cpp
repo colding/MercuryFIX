@@ -585,6 +585,7 @@ START_TEST(test_FIX_retrieve_sent)
         uint32_t msgtype_offset;
         uint8_t *msg;
         const struct timeval ttl = { 10, 0 };
+        const struct timeval ttl_do_not_resend = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -602,7 +603,18 @@ START_TEST(test_FIX_retrieve_sent)
         popper->start(db_path, "FIX.4.1", NULL, sockets[1]);
 
         for (n = 0; n < 16; ++n) {
-                fail_unless(0 == pusher->push(&ttl, strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                switch (n) {
+                case 0:
+                case 3:
+                case 4:
+                case 8:
+                case 10:
+                case 13:
+                        fail_unless(0 == pusher->push(&ttl_do_not_resend, strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                        break;
+                default:
+                        fail_unless(0 == pusher->push(&ttl, strlen(partial_messages[n]), (const uint8_t *)partial_messages[n], message_types[n]), NULL);
+                }
                 fail_unless(0 == popper->pop(&len, &msgtype_offset, &msg), NULL);
                 fail_unless(len == strlen(complete_messages[n]), NULL);
                 fail_unless(0 == memcmp(complete_messages[n], msg, len), NULL);
@@ -629,7 +641,18 @@ START_TEST(test_FIX_retrieve_sent)
         fail_unless(16 == pmsg_list->size(), NULL);
         for (n = 0; n < 16; ++n) {
                 pmsg = pmsg_list->get_at(n);
-                fail_unless(NULL != pmsg);
+                switch (n) {
+                case 0:
+                case 3:
+                case 4:
+                case 8:
+                case 10:
+                case 13:
+                        fail_unless(NULL == pmsg);
+                        continue;
+                default:
+                        fail_unless(NULL != pmsg);
+                }
                 fail_unless(0 == memcmp(partial_messages[n], pmsg->part_msg, pmsg->length), NULL);
                 fail_unless(0 == strcmp(message_types[n], pmsg->msg_type), NULL);
         }

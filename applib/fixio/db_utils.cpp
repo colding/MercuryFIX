@@ -427,8 +427,10 @@ MsgDB::get_sent_msgs(uint64_t start,
 
                 ttl_sec = (time_t)sqlite3_column_int64(select_statement, 0);
                 ttl_usec = (suseconds_t)sqlite3_column_int64(select_statement, 1);
-                if (is_ttl_expired(ttl_sec, ttl_usec))
+                if (is_ttl_expired(ttl_sec, ttl_usec)) {
+			retv->push_back(NULL);
                         continue;
+		}
 
                 pmsg = new (std::nothrow) PartialMessage;
                 if (!pmsg) {
