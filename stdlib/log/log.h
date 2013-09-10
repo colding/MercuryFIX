@@ -46,11 +46,6 @@
 #include <syslog.h>
 #include <unistd.h>
 
-/*
- * Convenient debug macro
- */
-#define d(format__, ...) do { printf("%d - " format__ "\n", __LINE__, ## __VA_ARGS__); } while (0)
-
 extern bool
 init_logging(const bool debug,
              const char * const identity);
@@ -69,6 +64,12 @@ log(int priority,
 #define QUOTEME__(x) #x
 #define QUOTEME_(x) QUOTEME__(x)
 #define CODE_POS__ __FILE__ "(" QUOTEME_(__LINE__)")"
+
+/*
+ * Convenient debug macro
+ */
+#undef d__
+#define d__(format__, ...) do { printf("%d - " format__ "\n", __LINE__, ## __VA_ARGS__); fflush(NULL); } while (0)
 
 // A panic condition. All hands on deck!
 #undef M_EMERGENCY
