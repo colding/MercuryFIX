@@ -104,7 +104,7 @@ FIXMessageTX::expose(size_t & len,
                      const uint8_t **data,
                      const char **msg_type)
 {
-        if (msg_type[0]) {
+        if (msg_type_[0]) {
                 // tack on "10="
                 *(pos_) = '1';
                 *(pos_ + 1) = '0';
