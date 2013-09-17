@@ -11,19 +11,26 @@
 
 SUBDIRS = 
 
-noinst_LTLIBRARIES = libfixio.la
-libfixio_la_LDFLAGS = -static
+#########################
+# Unit tests using Check
+#########################
 
-libfixio_la_SOURCES = \
-	fixio.h \
-	db_utils.h \
-	db_utils.cpp \
-	stack_utils.h \
-	fix_pusher.cpp \
-	fix_popper.cpp
+TESTS = check_fixmsg
+noinst_PROGRAMS = check_fixmsg
+check_fixmsg_LDFLAGS = -all-static
+check_fixmsg_SOURCES = \
+	check_fixmsg.cpp \
+	../fixmsg/fixmsg.h
 
-libfixio_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
-libfixio_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
+check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) -std=gnu++11
+check_fixmsg_LDADD = \
+	$(CHECK_LIBS) \
+	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
+	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
+	$(MERCURY_top_dir)/stdlib/log/liblog.la \
+	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
+	$(MERCURY_top_dir)/stdlib/network/libnetwork.la \
+	$(MERCURY_top_dir)/stdlib/local_db/liblocaldb.la
 
 ##################################
 # What to clean boiler plate code

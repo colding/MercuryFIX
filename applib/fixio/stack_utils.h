@@ -44,15 +44,27 @@
 #endif
 
 static inline void
+inc_counter(uint64_t *cntr)
+{
+        __atomic_add_fetch(cntr, 1, __ATOMIC_RELAXED);
+}
+
+static inline uint64_t
+read_counter(uint64_t *cntr)
+{
+        return __atomic_load_n(cntr, __ATOMIC_RELAXED);
+}
+
+static inline void
 set_flag(int *flag, int val)
 {
-        __atomic_store_n(flag, val, __ATOMIC_RELAXED);
+        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
 }
 
 static inline int
 get_flag(int *flag)
 {
-        return __atomic_load_n(flag, __ATOMIC_RELAXED);
+        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
 }
 
 /*

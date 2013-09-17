@@ -95,7 +95,7 @@ public:
 	 * exceeded its time to live, then a NULL will be
 	 * returned. NULL will also be returned if n >= size().
 	 */ 
-	const PartialMessage *get_at(const unsigned int n) const
+	PartialMessage *get_at(const unsigned int n)
 		{
 			if (n > (list_.size() - 1))
 				return NULL;
@@ -203,8 +203,9 @@ public:
          * to be re-sent starting with sequence number "start" and
          * ending with sequence number "end", both included.
          *
-         * If "end" is larger than the largest sequence number then
-         * all messages, starting with "start", is returned.
+         * If "end" is larger than the largest sequence number, or 0
+         * (zero), then all messages, starting with "start", is
+         * returned.
          *
          * This method is not performance critical (re-sending is a
          * fairly rare occurrence) and the implementation reflects

@@ -53,7 +53,6 @@
 #include "stdlib/locks/guard.h"
 #include "applib/fixio/db_utils.h"
 
-
 struct alfa_io_t;
 struct bravo_io_t;
 struct charlie_io_t;
@@ -103,6 +102,8 @@ class FIX_PushBase
          * data: A pointer to a partial FIX message.
 	 *
          * msg_type: The tag 35 message type value.
+	 *
+         * Returns 0 (zero) if all is well or an errno value if not.
          */
         virtual int push(const struct timeval * const ttl,
 			 const size_t len,
@@ -115,11 +116,30 @@ class FIX_PushBase
          * Only one thread must call this method.
 	 *
 	 * Parameters as in push().
+	 *
+         * Returns 0 (zero) if all is well or an errno value if not.
          */
         virtual int session_push(const struct timeval * const ttl,
 				 const size_t len,
                                  const uint8_t * const data,
                                  const char * const msg_type) = 0;
+
+	/*
+	 * Instrucs the pusher to resend a sequence of messages.
+	 *
+	 * start: The sequence number of the first message to be
+	 *        resend.
+	 *
+	 * end: The sequence number of the last message to be
+	 *      resend. If this number is greater than the greatest
+	 *      sequence number in the current session, or 0 (zero),
+	 *      then all sent message, starting with sequence number
+	 *      "start", will be resend.
+	 *
+         * Returns 0 (zero) if all is well, 1 (one) if not.
+	 */
+	virtual int resend(const uint64_t start,
+			   const uint64_t end) = 0;
 };
 
 /*
@@ -140,33 +160,15 @@ public:
          * This method calls stop(), but not start(). You must call
          * start().
          *
+         * local_cache: Path of local database caching sent
+         * messages. Must not be NULL.
+	 *
          * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        int init(void);
+        int init(const char * const local_cache);
 
         /*
-         * Pushes a FIX messages onto the outgoing stack.
-         *
-         * Must not contain tags:
-         *   8 (BeginString), 9 (BodyLength), 35 (MsgType), 34 (MsgSeqNum)
-         *
-         * But must end with:
-         *   <SOH>10=
-         *
-         * And must begin with:
-         *   <SOH>
-         *
-         * The mentioned tags will be added be the push function and
-         * so will the checksum value.
-         *
-	 * ttl: Time To Live, message will not be resend if ttl has
-	 *      passed.
-	 *
-         * len: The size of data in bytes.
-	 *
-         * data: A pointer to a partial FIX message.
-	 *
-         * msg_type: The tag 35 message type value.
+         * Please see base class documentation.
          */
         int push(const struct timeval * const ttl,
 		 const size_t len,
@@ -174,16 +176,18 @@ public:
                  const char * const msg_type);
 
         /*
-         * Please see FIX_Pusher::push() for the data format.
-         *
-         * Only one thread must call this method.
-	 *
-	 * Parameters as in push().
+         * Please see base class documentation.
          */
         int session_push(const struct timeval * const ttl,
 			 const size_t len,
                          const uint8_t * const data,
                          const char * const msg_type);
+
+        /*
+         * Please see base class documentation.
+         */
+	int resend(const uint64_t start,
+		   const uint64_t end);
 
         /*
          * Starts the pushing of messages into the sink.
@@ -270,10 +274,37 @@ private:
                         return *this;
                 };
 
+        /*
+         * The "real" push() method. Please see base class
+         * documentation.
+         */
+        int push_i(const struct timeval * const ttl,
+		   const size_t len,
+		   const uint8_t * const data,
+		   const char * const msg_type);
+
+        /*
+         * The "real" session_push() method. Please see base class
+         * documentation.
+         */
+        int session_push_i(const struct timeval * const ttl,
+			   const size_t len,
+			   const uint8_t * const data,
+			   const char * const msg_type);
+
+	/*
+	 * Will spin for a bit and make sure that alfa, bravo and
+	 * charlie are empty.
+	 */
+	void spin_buffers(void);
+
         char FIX_start_bytes_[32];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
+	uint64_t msg_seq_number_;           // message sequence number
+	uint64_t push_loop_count_;
         int FIX_start_bytes_length_;        // strlen of FIX version field
         int error_;                         // errno from the pusher thread
         int pause_thread_;                  // pause pusher thread
+	int resending_;                     // resend is in force
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
         int started_;                       // 1 (one) if started, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
@@ -340,7 +371,7 @@ public:
          * **data is the message data. This data is owened by
          * the caller which must free it.
          *
-         * Returns zero if all is well, non-zero if not.
+         * Returns zero if all is well, 1 (one) if not.
          */
         int pop(uint32_t * const len,
                 uint32_t * const msgtype_offset,
@@ -390,9 +421,6 @@ public:
          *
          * Only one thread must call this method or the behavior is
          * undefined.
-         *
-         * Return value is zero if all is well, or an errno value if
-         * not.
          */
         void session_pop(uint32_t * const len,
                          uint32_t * const msgtype_offset,

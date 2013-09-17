@@ -106,9 +106,9 @@ public:
          *
          * Returns 1 (one) if all is well, 0 (zero) if not.
          */
-        int append_field(const unsigned int tag,
-                         const size_t length,
-                         const uint8_t *value);
+        virtual int append_field(const unsigned int tag,
+				 const size_t length,
+				 const uint8_t *value);
 
         /*
          * Exposes information required by FIX_PushBase::push(). The

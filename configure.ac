@@ -20,7 +20,7 @@ AC_CONFIG_SRCDIR([support_files])
 AC_CONFIG_HEADERS([ac_config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([subdir-objects])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 
 dnl Standard checks
@@ -567,11 +567,10 @@ AC_CONFIG_FILES([Makefile
                  utillib/config/Makefile
                  omslib/Makefile
     		 applib/Makefile
-                 applib/base/Makefile
-                 applib/fixlib/Makefile
-                 applib/fixlib/session/Makefile
                  applib/fixmsg/Makefile
+                 applib/fixmsg_tests/Makefile
                  applib/fixio/Makefile
+                 applib/fixio_tests/Makefile
  		 servers/Makefile
 		 servers/generic/Makefile
 		 servers/versatile/Makefile
@@ -583,7 +582,6 @@ echo "\
 	Target Platform:           $target
 	Endianess:                 $endianess
 	Making a debug build:      $msg_debug
-	Build test files:          $msg_tests
         Mercury version:           $PACKAGE_VERSION
 	MERCURY_CXXFLAGS:          $MERCURY_CXXFLAGS
 	MERCURY_CPPFLAGS:          $MERCURY_CPPFLAGS

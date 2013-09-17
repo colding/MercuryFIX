@@ -34,27 +34,6 @@ libfixmsg_la_SOURCES = \
 libfixmsg_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
 libfixmsg_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
 
-#########################
-# Unit tests using Check
-#########################
-
-TESTS = check_fixmsg
-noinst_PROGRAMS = check_fixmsg
-check_fixmsg_LDFLAGS = -all-static
-check_fixmsg_SOURCES = \
-	check_fixmsg.cpp \
-	fix_msg.h
-
-check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) -std=gnu++11 -ggdb
-check_fixmsg_LDADD = \
-	$(CHECK_LIBS) \
-	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
-	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
-	$(MERCURY_top_dir)/stdlib/log/liblog.la \
-	$(MERCURY_top_dir)/stdlib/process/libprocess.la \
-	$(MERCURY_top_dir)/stdlib/network/libnetwork.la \
-	$(MERCURY_top_dir)/stdlib/local_db/liblocaldb.la
-
 ##################################
 # What to clean boiler plate code
 ##################################

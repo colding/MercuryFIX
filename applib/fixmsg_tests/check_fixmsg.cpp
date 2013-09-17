@@ -47,9 +47,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include "fixmsg.h"
 #include "stdlib/log/log.h"
 #include "applib/fixio/fixio.h"
+#include "applib/fixmsg/fixmsg.h"
 
 #define DELIM '|'
 
@@ -161,7 +161,7 @@ START_TEST(test_FIXMessageRX_resource_management)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == pusher->init(":memory:"), NULL);
         fail_unless(1 == popper->init(), NULL);
         fail_unless(1 == rx_msg.init(), NULL);
 
@@ -206,7 +206,7 @@ START_TEST(test_FIXMessageRX_next_field)
         int sockets[2] = { -1, -1 };
 
         fail_unless(0 == socketpair(PF_LOCAL, SOCK_STREAM, 0, sockets), NULL);
-        fail_unless(1 == pusher->init(), NULL);
+        fail_unless(1 == pusher->init(":memory:"), NULL);
         fail_unless(1 == popper->init(), NULL);
         fail_unless(1 == rx_msg.init(), NULL);
 

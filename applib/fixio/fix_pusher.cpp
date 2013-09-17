@@ -148,6 +148,7 @@
 #include "stdlib/macros/macros.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
+#include "applib/fixmsg/fixmsg.h"
 #include "stack_utils.h"
 
 /*
@@ -205,6 +206,8 @@
 #define MSG_TYPE_MAX_LENGTH (16)
 
 struct pusher_thread_args_t {
+	uint64_t *msg_seq_number;
+	uint64_t *loop_count;
         int *pause_thread;
         int *db_is_open;
         MsgDB *db;
@@ -722,25 +725,6 @@ pusher_thread_func(void *arg)
                 return NULL;
         }
 
-        // get the database running
-        set_flag(args->db_is_open, 0);
-        while (get_flag(args->pause_thread))
-                sched_yield();
-        if (!args->db->open()) {
-                M_ERROR("could not open local database");
-                abort();
-        }
-        set_flag(args->db_is_open, 1);
-
-        // Get last message sequence number sent - tag 34.  The
-        // sequence number will be incremented whenever a message is
-        // sent.
-        if (!args->db->get_latest_sent_seqnum(msg_seq_number)) {
-                M_ALERT("error getting latest sent sequence number");
-                free(vdata);
-                return NULL;
-        }
-
         //
         // register entry processors
         //
@@ -770,24 +754,25 @@ pusher_thread_func(void *arg)
 
                 // alfa
                 rval = push_alfa(&alfa_cursor, &alfa_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
+                if (UNLIKELY(rval)) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // bravo
                 rval = push_bravo(&bravo_cursor, &bravo_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
+                if (UNLIKELY(rval)) {
                         set_flag(args->error, rval);
                         goto out;
                 }
 
                 // charlie
                 rval = push_charlie(&charlie_cursor, &charlie_reg_number, &msg_seq_number, args, vdata);
-                if (rval) {
+                if (UNLIKELY(rval)) {
                         set_flag(args->error, rval);
                         goto out;
                 }
+		inc_counter(args->loop_count);
         } while (1);
 out:
         free(vdata);
@@ -818,13 +803,21 @@ FIX_Pusher::FIX_Pusher(const char soh)
         args_ = NULL;
         db_is_open_ = 0;
         pause_thread_ = 1;
+	resending_ = 0;
         started_ = 0;
+	msg_seq_number_ = 0;
+	push_loop_count_ = 0;
 }
 
 int
-FIX_Pusher::init(void)
+FIX_Pusher::init(const char * const local_cache)
 {
         stop();
+
+	if (!local_cache || !db_.set_db_path(local_cache)) {
+		M_ALERT("could not set local database path");
+		goto err;
+	}
 
         if (!alfa_) {
                 alfa_ = alfa_ring_buffer_malloc();
@@ -854,14 +847,35 @@ FIX_Pusher::init(void)
         }
 
         if (!args_) {
+		// ensure that the thread is started as paused
+		pause_thread_ = 1;
+
+		// Get last message sequence number sent - tag 34.  The
+		// sequence number will be incremented whenever a message is
+		// sent.
+		if (!db_.open()) {
+			M_ERROR("could not open local database");
+			abort();
+		}
+		set_flag(&db_is_open_, 1);
+		if (!db_.get_latest_sent_seqnum(msg_seq_number_)) {			
+			M_ALERT("error getting latest sent sequence number");
+			goto err;
+		}
+		db_.close();
+		set_flag(&db_is_open_, 0);
+
                 args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
                 if (!args_) {
                         M_ALERT("no memory");
                         goto err;
                 }
+
                 args_->db = &db_;
                 args_->db_is_open = &db_is_open_;
                 args_->pause_thread = &pause_thread_;
+		args_->msg_seq_number = &msg_seq_number_;
+		args_->loop_count = &push_loop_count_;
                 args_->sink_fd = &sink_fd_;
                 args_->error = &error_;
                 args_->alfa = alfa_;
@@ -874,6 +888,8 @@ FIX_Pusher::init(void)
                 pthread_t pusher_thread_id;
                 if (!create_detached_thread(&pusher_thread_id, args_, pusher_thread_func)) {
                         M_ALERT("could not create pusher thread");
+			free(args_);
+			args_ = NULL;
                         goto err;
                 }
         }
@@ -888,6 +904,18 @@ FIX_Pusher::push(const struct timeval * const ttl,
                  const size_t len,
                  const uint8_t * const data,
                  const char * const msg_type)
+{
+	if (!get_flag(&resending_))
+		return push_i(ttl, len, data, msg_type);
+
+	return EAGAIN;
+}
+
+int
+FIX_Pusher::push_i(const struct timeval * const ttl,
+		   const size_t len,
+		   const uint8_t * const data,
+		   const char * const msg_type)
 {
         struct timeval time_to_live;
         struct cursor_t alfa_cursor;
@@ -955,14 +983,26 @@ FIX_Pusher::push(const struct timeval * const ttl,
         return get_flag(&error_);
 }
 
+int
+FIX_Pusher::session_push(const struct timeval * const ttl,
+			 const size_t len,
+			 const uint8_t * const data,
+			 const char * const msg_type)
+{
+	if (!get_flag(&resending_))
+		return session_push_i(ttl, len, data, msg_type);
+
+	return EAGAIN;
+}
+
 /*
  * Only called from one thread
  */
 int
-FIX_Pusher::session_push(const struct timeval * const ttl,
-                         const size_t len,
-                         const uint8_t * const data,
-                         const char * const msg_type)
+FIX_Pusher::session_push_i(const struct timeval * const ttl,
+			   const size_t len,
+			   const uint8_t * const data,
+			   const char * const msg_type)
 {
         struct timeval time_to_live;
         struct cursor_t charlie_cursor;
@@ -998,6 +1038,66 @@ FIX_Pusher::session_push(const struct timeval * const ttl,
         }
 
         return get_flag(&error_);
+}
+
+void 
+FIX_Pusher::spin_buffers(void)
+{
+	uint64_t push_itr;
+
+	push_itr = read_counter(&push_loop_count_);
+	push_itr += 2;
+	do {
+		sched_yield();
+	} while (push_itr < read_counter(&push_loop_count_));
+}
+
+int 
+FIX_Pusher::resend(const uint64_t start,
+		   const uint64_t end)
+{
+        PartialMessageList *pmsg_list;
+        PartialMessage *pmsg;
+        FIXMessageTX tx_msg(soh_);
+	//char tmp[48];
+	uint64_t n;
+
+	if (!tx_msg.init())
+		return 1;
+
+	set_flag(&resending_, 1);
+
+	/*
+	 * This is to ensure that all messages has been emptied from
+	 * alfa, bravo and charlie so that the resend messages are
+	 * guaranteed to be send in one coherent chunk.
+	 */
+	spin_buffers();
+
+        pmsg_list = db_.get_sent_msgs(start, end);
+	for (n = 0; n < pmsg_list->size(); ++n) {
+		pmsg = pmsg_list->get_at(n);
+		if (!pmsg) {
+			spin_buffers();
+			tx_msg.append_field(35, strlen("4"), (const uint8_t*)"4"); // SequenseReset
+			tx_msg.append_field(123, strlen("Y"), (const uint8_t*)"Y"); // GapFill
+
+			
+			tx_msg.append_field(36, strlen("4"), (const uint8_t*)"4"); // NewSeqNo
+		} else {
+			
+		}
+	}
+	/*
+	 * To guarantee that resend messages are not interleaved with
+	 * new messages.
+	 */
+	spin_buffers();
+
+	set_flag(&resending_, 0);
+	delete pmsg_list;
+
+	return 0;
 }
 
 int

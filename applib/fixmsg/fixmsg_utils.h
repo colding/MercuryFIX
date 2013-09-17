@@ -81,8 +81,8 @@
  *
  * This may seem like an immature quest for non-essential performance
  * over good clean code, but it's not. This function is exclusively
- * used in the hot path of the FIX RX message parser, so every little bit
- * of verifiable performance counts.
+ * used in the hot path of the FIX RX message parser, so every little
+ * bit of verifiable performance counts.
  */
 static inline int
 get_fix_tag(const char **str)

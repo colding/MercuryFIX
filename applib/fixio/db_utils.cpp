@@ -51,8 +51,8 @@
 #define CREATE_RECV_MSG_TABLE "CREATE TABLE IF NOT EXISTS RECV_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, msg BLOB)"
 #define CREATE_SENT_MSG_TABLE "CREATE TABLE IF NOT EXISTS SENT_MESSAGES (seqnum INTEGER PRIMARY KEY, timestamp_seconds INTEGER, timestamp_microseconds INTEGER, ttl_seconds INTEGER, ttl_useconds INTEGER, msg_type TEXT, partial_msg_length INTEGER, partial_msg BLOB)"
 
-#define INSERT_RECV_MESSAGE "INSERT INTO RECV_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg) VALUES(?1, ?2, ?3, ?4)"
-#define INSERT_SENT_MESSAGE "INSERT INTO SENT_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+#define INSERT_RECV_MESSAGE "INSERT OR REPLACE INTO RECV_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, msg) VALUES(?1, ?2, ?3, ?4)"
+#define INSERT_SENT_MESSAGE "INSERT OR REPLACE INTO SENT_MESSAGES(seqnum, timestamp_seconds, timestamp_microseconds, ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
 
 #define SELECT_MAX_RECV_SEQNUM "SELECT MAX(seqnum) FROM RECV_MESSAGES"
 #define SELECT_MAX_SENT_SEQNUM "SELECT MAX(seqnum) FROM SENT_MESSAGES"
@@ -388,6 +388,7 @@ PartialMessageList*
 MsgDB::get_sent_msgs(uint64_t start,
                      uint64_t end) const
 {
+        static const char *select_fmt_no_end = "SELECT ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg FROM SENT_MESSAGES WHERE seqnum >= %llu";
         static const char *select_fmt = "SELECT ttl_seconds, ttl_useconds, msg_type, partial_msg_length, partial_msg FROM SENT_MESSAGES WHERE seqnum >= %llu AND seqnum <= %llu";
         PartialMessageList *retv = NULL;
         PartialMessage *pmsg = NULL;
@@ -401,7 +402,11 @@ MsgDB::get_sent_msgs(uint64_t start,
         if (!db_)
                 return NULL;
 
-        sprintf(select_str, select_fmt, start, end);
+	if (!end) {
+		sprintf(select_str, select_fmt_no_end, start);
+	} else {
+		sprintf(select_str, select_fmt, start, end);
+	}
         ret = sqlite3_prepare_v2(db_, select_str, -1,  &select_statement, NULL);
         if (SQLITE_OK != ret) {
                 M_ALERT("could not prepare select sent messages statement: ret = %d", ret);
@@ -435,12 +440,20 @@ MsgDB::get_sent_msgs(uint64_t start,
                 pmsg = new (std::nothrow) PartialMessage;
                 if (!pmsg) {
                         delete retv;
+			M_ALERT("no memory");
                         retv = NULL;
                         goto out;
                 }
                 pmsg->msg_type = strdup((const char*)sqlite3_column_text(select_statement, 2));
                 pmsg->length = sqlite3_column_int64(select_statement, 3);
-                pmsg->part_msg = (uint8_t*)malloc(pmsg->length);
+                pmsg->part_msg = (uint8_t*)malloc(pmsg->length + 5); // "+ 5" is to avoid realloc when inserting "43=Y<SOH>"
+		if (!pmsg->part_msg) {
+			delete pmsg;
+                        delete retv;
+			M_ALERT("no memory");
+                        retv = NULL;
+                        goto out;
+		}
                 part_msg = sqlite3_column_blob(select_statement, 4);
                 memcpy((void*)pmsg->part_msg, (const uint8_t*)part_msg, pmsg->length);
 
