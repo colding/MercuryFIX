@@ -67,6 +67,9 @@ struct nano_yield_t__ {
  * The following functions implements a method to ensure exclusive
  * access to a specific region. It goes like this:
  *
+ * init_region() must be invoked before any of the following methods
+ * are used. It leaves the region accessible to other threads.
+ *
  * All threads entering a protected region must call
  * enter_region(). This function will block until access is
  * granted. Upon leaving the region leave_region() must be
@@ -80,6 +83,12 @@ struct nano_yield_t__ {
  * unblock_region() must be called to allow other threads access to
  * the region.
  */
+
+static inline void
+init_region(reflock_t * const lock)
+{
+	__atomic_store_n(&lock->comb, 0, __ATOMIC_RELEASE);
+}
 
 static inline void
 block_region(reflock_t * const lock)
