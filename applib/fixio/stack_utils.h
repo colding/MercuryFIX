@@ -87,7 +87,7 @@ struct nano_yield_t__ {
 static inline void
 init_region(reflock_t * const lock)
 {
-	__atomic_store_n(&lock->comb, 0, __ATOMIC_RELEASE);
+	lock->comb = 0;
 }
 
 static inline void
