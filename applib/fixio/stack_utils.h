@@ -42,7 +42,101 @@
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include "stdlib/disruptor/memsizes.h"
 
+union __attribute__ ((__packed__)) reflock_t
+{
+   uint64_t comb;
+   struct __attribute__ ((__packed__))
+      {
+	      uint32_t low_part;  // contains reference count of region
+	      uint32_t high_part; // contains region lock
+      } parts;
+};
+
+/*
+ * Cacheline padded timeout value.  Not intended for use elsewhere.
+ */
+struct nano_yield_t__ {
+        struct timespec timeout;
+        uint8_t padding[(CACHE_LINE_SIZE > sizeof(struct timespec)) ? (CACHE_LINE_SIZE - sizeof(struct timespec)) : (sizeof(struct timespec) % CACHE_LINE_SIZE)];
+} __attribute__((aligned(CACHE_LINE_SIZE)));
+
+
+/*
+ * The following functions implements a method to ensure exclusive
+ * access to a specific region. It goes like this:
+ *
+ * All threads entering a protected region must call
+ * enter_region(). This function will block until access is
+ * granted. Upon leaving the region leave_region() must be
+ * called. This access is shared with other threads.
+ *
+ * Now, a thread which seeks exclusive access to a region must call
+ * block_region() and invoke waitfor_region() before entering
+ * it. waitfor_region() blocks until the calling thread has exclusive
+ * access to the region.
+ *
+ * unblock_region() must be called to allow other threads access to
+ * the region.
+ */
+
+static inline void
+block_region(reflock_t * const lock)
+{
+	uint8_t expected = 0;
+
+	while (!__atomic_compare_exchange_n(&lock->parts.high_part, &expected, 1, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
+		expected = 0;
+	}
+}
+
+static inline void
+waitfor_region(reflock_t * const lock)
+{
+	const struct nano_yield_t__ timeout__ = { {0, 1}, { 0 } };
+
+	while (__atomic_load_n(&lock->parts.low_part, __ATOMIC_ACQUIRE)) {
+		nanosleep(&timeout__.timeout, NULL); 
+	}
+}
+
+static inline void
+unblock_region(reflock_t * const lock)
+{
+	__atomic_store_n(&lock->parts.high_part, 0, __ATOMIC_RELEASE);
+}
+
+static inline void
+enter_region(reflock_t * const lock)
+{
+	const struct nano_yield_t__ timeout__ = { {0, 1}, { 0 } };
+	uint64_t lck = __atomic_load_n(&lock->comb, __ATOMIC_ACQUIRE);
+
+	while (lck >> 32) {
+		lck = __atomic_load_n(&lock->comb, __ATOMIC_ACQUIRE);
+                nanosleep(&timeout__.timeout, NULL);
+	} 
+
+	while (!__atomic_compare_exchange_n(&lock->comb, &lck, lck + 1, true,  __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
+	again:
+		lck = __atomic_load_n(&lock->comb, __ATOMIC_ACQUIRE);
+		if (lck >> 32) {
+			nanosleep(&timeout__.timeout, NULL); 
+			goto again;
+		}
+	}
+}
+
+static inline void
+leave_region(reflock_t * const lock)
+{
+	__atomic_sub_fetch(&lock->comb, 1, __ATOMIC_RELEASE);
+}
+
+/*
+ * Perpetuallly increasing counter
+ */
 static inline void
 inc_counter(uint64_t *cntr)
 {
@@ -55,32 +149,17 @@ read_counter(uint64_t *cntr)
         return __atomic_load_n(cntr, __ATOMIC_RELAXED);
 }
 
+/*
+ * Helper functions for coupled pairs of synchronization flags 
+ */
 static inline void
 set_flag(int *flag, int val)
 {
-        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
+        __atomic_store_n(flag, val, __ATOMIC_RELAXED);
 }
 
 static inline int
 get_flag(int *flag)
 {
-        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
-}
-
-/*
- * msg is a pointer to the first byte in a FIX messsage which is
- * included in the checksum calculation. len is the number of bytes
- * included in the checksum calculation.
- */
-static inline int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
+        return __atomic_load_n(flag, __ATOMIC_RELAXED);
 }
