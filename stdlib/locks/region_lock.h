@@ -65,7 +65,7 @@ struct nano_yield_t__ {
 
 /*
  * The following functions implements a method to ensure exclusive
- * access to a specific region. It goes like this:
+ * access to any number of specific regions. It goes like this:
  *
  * init_region() must be invoked before any of the following methods
  * are used. It leaves the region accessible to other threads.
@@ -82,6 +82,10 @@ struct nano_yield_t__ {
  *
  * unblock_region() must be called to allow other threads access to
  * the region.
+ *
+ * NOTE: The maximum accumulated number of concurrent accessors to
+ * regions protected by a common reflock_t is UINT_MAX. The behaviour
+ * is undefined should that number be exceeded.
  */
 
 static inline void
@@ -143,32 +147,3 @@ leave_region(reflock_t * const lock)
 	__atomic_sub_fetch(&lock->comb, 1, __ATOMIC_RELEASE);
 }
 
-/*
- * Perpetuallly increasing counter
- */
-static inline void
-inc_counter(uint64_t *cntr)
-{
-        __atomic_add_fetch(cntr, 1, __ATOMIC_RELAXED);
-}
-
-static inline uint64_t
-read_counter(uint64_t *cntr)
-{
-        return __atomic_load_n(cntr, __ATOMIC_RELAXED);
-}
-
-/*
- * Helper functions for coupled pairs of synchronization flags 
- */
-static inline void
-set_flag(int *flag, int val)
-{
-        __atomic_store_n(flag, val, __ATOMIC_RELAXED);
-}
-
-static inline int
-get_flag(int *flag)
-{
-        return __atomic_load_n(flag, __ATOMIC_RELAXED);
-}

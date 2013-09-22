@@ -11,16 +11,23 @@
 
 SUBDIRS = 
 
-noinst_LTLIBRARIES = liblocks.la
-liblocks_la_LDFLAGS = -static
-liblocks_la_SOURCES = \
-	file_locks.cpp \
-	file_locks.h \
-	region_lock.h \
-	guard.h
+noinst_LTLIBRARIES = libfixio.la
+libfixio_la_LDFLAGS = -static
 
-AM_CPPFLAGS = $(MERCURY_CPPFLAGS)
-AM_CXXFLAGS = $(MERCURY_CXXFLAGS)
+libfixio_la_SOURCES = \
+	fixio.h \
+	db_utils.h \
+	db_utils.cpp \
+	stack_utils.h \
+	fix_pusher.cpp \
+	fix_popper.cpp
+
+libfixio_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
+libfixio_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
+
+##################################
+# What to clean boiler plate code
+##################################
 
 if THIS_IS_NOT_A_DISTRIBUTION
 CLEAN_IN_FILES = Makefile.in
@@ -29,4 +36,5 @@ CLEAN_IN_FILES =
 endif
 
 DISTCLEANFILES = $(BUILT_SOURCES) $(CLEAN_IN_FILES) Makefile
-CLEANFILES = *~
+CLEANFILES = *~ *.trs
+
