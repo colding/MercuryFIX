@@ -44,31 +44,12 @@
 #endif
 #include "stdlib/disruptor/memsizes.h"
 
-union __attribute__ ((__packed__)) reflock_t
-{
-   uint64_t comb;
-   struct __attribute__ ((__packed__))
-      {
-	      uint32_t low_part;  // contains reference count of region
-	      uint32_t high_part; // contains region lock
-      } parts;
-};
-
-/*
- * Cacheline padded timeout value.  Not intended for use elsewhere.
- */
-struct nano_yield_t__ {
-        struct timespec timeout;
-        uint8_t padding[(CACHE_LINE_SIZE > sizeof(struct timespec)) ? (CACHE_LINE_SIZE - sizeof(struct timespec)) : (sizeof(struct timespec) % CACHE_LINE_SIZE)];
-} __attribute__((aligned(CACHE_LINE_SIZE)));
-
-
 /*
  * The following functions implements a method to ensure exclusive
  * access to any number of specific regions. It goes like this:
  *
  * init_region() must be invoked before any of the following methods
- * are used. It leaves the region accessible to other threads.
+ * are used and before the reflock_t is visible to other threads.
  *
  * All threads entering a protected region must call
  * enter_region(). This function will block until access is
@@ -86,7 +67,27 @@ struct nano_yield_t__ {
  * NOTE: The maximum accumulated number of concurrent accessors to
  * regions protected by a common reflock_t is UINT_MAX. The behaviour
  * is undefined should that number be exceeded.
+ *
+ * Hmm... It just dawned on me that this is a rw semaphore.
  */
+
+union __attribute__ ((__packed__)) reflock_t
+{
+   uint64_t comb;
+   struct __attribute__ ((__packed__))
+      {
+	      uint32_t low_part;  // contains reference count of region
+	      uint32_t high_part; // contains region lock
+      } parts;
+};
+
+/*
+ * Cacheline padded timeout value.  Not intended for use elsewhere.
+ */
+struct nano_yield_t__ {
+        struct timespec timeout;
+        uint8_t padding[(CACHE_LINE_SIZE > sizeof(struct timespec)) ? (CACHE_LINE_SIZE - sizeof(struct timespec)) : (sizeof(struct timespec) % CACHE_LINE_SIZE)];
+} __attribute__((aligned(CACHE_LINE_SIZE)));
 
 static inline void
 init_region(reflock_t * const lock)
