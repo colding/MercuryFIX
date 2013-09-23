@@ -89,6 +89,8 @@ struct nano_yield_t__ {
         uint8_t padding[(CACHE_LINE_SIZE > sizeof(struct timespec)) ? (CACHE_LINE_SIZE - sizeof(struct timespec)) : (sizeof(struct timespec) % CACHE_LINE_SIZE)];
 } __attribute__((aligned(CACHE_LINE_SIZE)));
 
+static const struct nano_yield_t__ timeout__ = { {0, 1}, { 0 } };
+
 static inline void
 init_region(reflock_t * const lock)
 {
@@ -108,8 +110,6 @@ block_region(reflock_t * const lock)
 static inline void
 waitfor_region(reflock_t * const lock)
 {
-	const struct nano_yield_t__ timeout__ = { {0, 1}, { 0 } };
-
 	while (__atomic_load_n(&lock->parts.low_part, __ATOMIC_ACQUIRE)) {
 		nanosleep(&timeout__.timeout, NULL); 
 	}
@@ -124,7 +124,6 @@ unblock_region(reflock_t * const lock)
 static inline void
 enter_region(reflock_t * const lock)
 {
-	const struct nano_yield_t__ timeout__ = { {0, 1}, { 0 } };
 	uint64_t lck = __atomic_load_n(&lock->comb, __ATOMIC_ACQUIRE);
 
 	while (lck >> 32) {
