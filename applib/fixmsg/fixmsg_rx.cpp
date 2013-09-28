@@ -63,6 +63,9 @@ FIXMessageRX::init(void)
         const struct FIX_Tag *fix_tags;
         const struct FIX_Tag *fix_data_tags;
 
+	tags_.clear();
+	data_tags_.clear();
+
         switch (version_) {
         case FIX_4_0:
                 fix_tags = fix40_std_tags;
@@ -101,7 +104,7 @@ FIXMessageRX::init(void)
                 fix_data_tags = fixt11_std_data_tags;
                 break;
         default:
-                return 0;
+                return 1;
         }
 
         int n = 0;

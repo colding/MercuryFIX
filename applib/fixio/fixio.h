@@ -100,6 +100,7 @@ get_FIX_checksum(const uint8_t *msg, size_t len)
  */
 class FIX_PushBase
 {
+public:
         /*
          * Pushes a FIX messages onto the outgoing stack.
          *
@@ -353,7 +354,7 @@ private:
 
 
 /*
- * Pops complate messages from the recieve stack. Takes, by necessity,
+g * Pops complate messages from the recieve stack. Takes, by necessity,
  * care of detecting message gabs and ResendRequest/SequenceReset.
  */
 class FIX_Popper
@@ -557,7 +558,7 @@ private:
                 };
 
         int source_fd_;
-//	FIX_Version fix_ver_;
+	FIX_Version fix_ver_;
         char begin_string_[32];                        // 8="FIX ver"<SOH>9="
         int begin_string_length_;                      // strlen of begin_string_
         int error_;                                    // errno from the sucker thread

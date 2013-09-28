@@ -816,7 +816,7 @@ pusher_thread_func(void *arg)
 
         // Push data into sink until told to stop.
         do {
-                if (UNLIKELY(get_flag(args->pause_thread))) {
+                if (UNLIKELY(get_flag_weak(args->pause_thread))) {
 			__atomic_store_n(args->msg_seq_number, msg_seq_number, __ATOMIC_RELEASE);
 
                         if (!args->db->close()) {
@@ -827,7 +827,7 @@ pusher_thread_func(void *arg)
 
                         do {
                                 sched_yield();
-                        } while (get_flag(args->pause_thread));
+                        } while (get_flag_weak(args->pause_thread));
 			msg_seq_number = __atomic_load_n(args->msg_seq_number, __ATOMIC_ACQUIRE);
 
                         if (!args->db->open()) {
@@ -857,8 +857,6 @@ pusher_thread_func(void *arg)
                         set_flag(args->error, rval);
                         goto out;
                 }
-
-//		inc_counter(args->loop_count);
         } while (1);
 out:
         free(vdata);
@@ -1364,7 +1362,7 @@ FIX_Pusher::start(const char * const local_cache,
                 }
         }
 
-        set_flag(&pause_thread_, 0);
+        set_flag_weak(&pause_thread_, 0);
         while (!get_flag(&db_is_open_)) {
                 sched_yield();
         }
@@ -1380,7 +1378,7 @@ FIX_Pusher::stop(void)
         if (!get_flag(&started_))
                 return;
 
-        set_flag(&pause_thread_, 1);
+        set_flag_weak(&pause_thread_, 1);
         while (get_flag(&db_is_open_)) {
                 sched_yield();
         }

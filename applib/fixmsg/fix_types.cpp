@@ -189,6 +189,19 @@ get_fix_msgtype(const char soh,
 }
 
 int
+is_session_message(const FIX_MsgType type)
+{
+	int n = 0;
+
+	while (fmt_CustomMsg != fix_session_message_types[n]){
+		if (fix_session_message_types[n] == type)
+			return 1;
+		++n;
+	}
+	return 0;
+}
+
+int
 is_session_message(const char soh,
                    const char * const str)
 {

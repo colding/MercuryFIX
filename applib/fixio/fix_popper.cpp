@@ -148,6 +148,7 @@
 #include "stdlib/network/network.h"
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
+#include "applib/fixmsg/fixmsg.h"
 #include "applib/fixmsg/fix_types.h"
 #include "applib/fixutils/stack_utils.h"
 
@@ -162,6 +163,8 @@ struct splitter_thread_args_t {
         foxtrot_io_t *foxtrot;
         char *begin_string;
         int *begin_string_length;
+        FIX_Version *fix_ver;
+        FIX_PushBase *pusher;
         char soh;
 };
 
@@ -320,6 +323,9 @@ enum FIX_Parse_State
         CopyingBody,
 };
 
+/*
+ * Officially the function from hell...
+ */
 void*
 splitter_thread_func(void *arg)
 {
@@ -333,6 +339,7 @@ splitter_thread_func(void *arg)
         uint32_t bytes_left_to_copy = 0;
         char length_str[32] = { '\0' };
         const uint8_t *msg_type;
+        FIX_MsgType fix_msg_type;
         uint64_t msg_seq_number_expected;
         uint64_t msg_seq_number_recieved;
         struct cursor_t n;
@@ -354,6 +361,14 @@ splitter_thread_func(void *arg)
                 M_ERROR("splitter thread cannot run");
                 abort();
         }
+
+        FIXMessageRX fixmsg_rx = FIXMessageRX::make_fix_message_mem_owner_on_stack(*args->fix_ver, args->soh);
+        if (!fixmsg_rx.init()) {
+                M_ERROR("splitter thread cannot run");
+                abort();
+        }
+        size_t value_length;
+        uint8_t *value;
 
         set_flag(args->db_is_open, 0);
         while (get_flag(args->pause_thread))
@@ -389,17 +404,21 @@ splitter_thread_func(void *arg)
         offset = 0;
         state = FindingBeginString;
         do {
-                if (UNLIKELY(get_flag(args->pause_thread))) {
+                if (UNLIKELY(get_flag_weak(args->pause_thread))) {
                         if (!args->db->close()) {
                                 M_ERROR("could not close local database");
-                                continue;
+                                abort();
                         }
                         set_flag(args->db_is_open, 0);
 
                         do {
                                 sched_yield();
-                        } while (get_flag(args->pause_thread));
+                        } while (get_flag_weak(args->pause_thread));
 
+                        if (!fixmsg_rx.init()) {
+                                M_ERROR("splitter thread cannot run");
+                                abort();
+                        }
                         if (!args->db->open()) {
                                 M_ERROR("could not open local database");
                                 abort();
@@ -454,7 +473,11 @@ splitter_thread_func(void *arg)
                                                 state = FindingBeginString; // not a valid number, skip this message
                                                 continue;
                                         }
-                                        bytes_left_to_copy = body_length + 1 + 7; // we need to copy the soh_ following the BodyLength field (it isn't included in the field value) and the CheckSum plus ending soh_
+                                        /*
+                                         * we need to copy the soh_ following the BodyLength field (it isn't included in
+                                         * the field value) and the CheckSum plus ending soh_
+                                         */
+                                        bytes_left_to_copy = body_length + 1 + 7;
                                         if (delta_entry->content.size < *args->begin_string_length + strlen(length_str) + bytes_left_to_copy) {
                                                 free(delta_entry->content.data);
                                                 delta_entry->content.size = *args->begin_string_length + strlen(length_str) + bytes_left_to_copy;
@@ -485,6 +508,7 @@ splitter_thread_func(void *arg)
                                                         M_ALERT("malformed message type value");
                                                         goto go_on;
                                                 }
+                                                fix_msg_type = get_fix_msgtype(args->soh, (const char*)msg_type);
 
                                                 msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
                                                 if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
@@ -493,7 +517,50 @@ splitter_thread_func(void *arg)
                                                         goto go_on;
                                                 }
 
-                                                if (is_session_message(args->soh, (const char*)msg_type)) {
+                                                if (!is_session_message(fix_msg_type)) {
+                                                        if (fmt_ResendRequest != fix_msg_type) {
+                                                                delta_entry->content.msgtype_offset = (uint32_t)(msg_type - delta_entry->content.data);
+                                                                args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
+
+                                                                delta_publisher_commit_entry_blocking(args->delta, &delta_cursor);
+                                                                delta_publisher_next_entry_blocking(args->delta, &delta_cursor);
+                                                                delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
+                                                        } else { // ResendRequest recieved
+                                                                intmax_t begin_seqnum = 0;
+                                                                intmax_t end_seqnum = 0;
+                                                                char done = 0x00;
+                                                                int tag;
+
+                                                                fixmsg_rx.imprint(delta_entry->content.msgtype_offset, delta_entry->content.data);
+
+                                                                do {
+                                                                        tag = fixmsg_rx.next_field(value_length, &value);
+                                                                        if (!tag)
+                                                                                break;
+
+                                                                        if (7 == tag) { // BeginSeqNo
+                                                                                begin_seqnum = strtoimax((const char*)value, NULL, 10);
+                                                                                done |= 0x01;
+                                                                        }
+
+                                                                        if (16 == tag) { // EndSeqNo
+                                                                                end_seqnum = strtoimax((const char*)value, NULL, 10);
+                                                                                done |= 0x10;
+                                                                        }
+
+                                                                        if (0x11 == done)
+                                                                                break;
+                                                                } while (1);
+                                                                fixmsg_rx.done();
+
+                                                                if (0x11 != done) { // invalid resend request - HANDLE IT
+                                                                        M_ALERT("could not resend");
+                                                                }
+                                                                if (args->pusher->resend(begin_seqnum, end_seqnum)) {
+                                                                        M_ALERT("could not resend");
+                                                                }
+                                                        }
+                                                } else {
                                                         if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
                                                                 M_ALERT("oversized session message");
                                                                 --msg_seq_number_expected;
@@ -507,13 +574,6 @@ splitter_thread_func(void *arg)
                                                         echo_publisher_commit_entry_blocking(args->echo, &echo_cursor);
                                                         echo_publisher_next_entry_blocking(args->echo, &echo_cursor);
                                                         echo_entry = echo_ring_buffer_acquire_entry(args->echo, &echo_cursor);
-                                                } else {
-                                                        delta_entry->content.msgtype_offset = (uint32_t)(msg_type - delta_entry->content.data);
-                                                        args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
-
-                                                        delta_publisher_commit_entry_blocking(args->delta, &delta_cursor);
-                                                        delta_publisher_next_entry_blocking(args->delta, &delta_cursor);
-                                                        delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
                                                 }
                                         go_on:
                                                 state = FindingBeginString;
@@ -707,7 +767,9 @@ FIX_Popper::init(void)
                 splitter_args_->delta = delta_;
                 splitter_args_->echo = echo_;
                 splitter_args_->foxtrot = foxtrot_;
+                splitter_args_->fix_ver = &fix_ver_;
                 splitter_args_->soh = soh_;
+                splitter_args_->pusher = pusher_;
 
                 pthread_t splitter_thread_id;
                 if (!create_detached_thread(&splitter_thread_id, splitter_args_, splitter_thread_func)) {
@@ -857,6 +919,16 @@ FIX_Popper::start(const char * const local_cache,
         }
 
         if (FIX_ver) {
+                unsigned int n;
+
+                fix_ver_ = CUSTOM;
+                for (n = 0; n < FIX_VERSION_TYPES_COUNT; ++n) {
+                        if (!strcmp(fix_version_string[n], FIX_ver)) {
+                                fix_ver_ = (FIX_Version)n;
+                                break;
+                        }
+                }
+
                 if (sizeof(begin_string_) <= strlen(FIX_ver)) {
                         M_ALERT("oversized FIX version: %s (%d)", FIX_ver, sizeof(begin_string_));
                         goto out;
@@ -890,7 +962,7 @@ FIX_Popper::start(const char * const local_cache,
                 }
         }
 
-        set_flag(&pause_threads_, 0);
+        set_flag_weak(&pause_threads_, 0);
         while (!get_flag(&db_is_open_)) {
                 sched_yield();
         }
@@ -909,7 +981,7 @@ FIX_Popper::stop(void)
         if (!get_flag(&started_))
                 return 1;
 
-        set_flag(&pause_threads_, 1);
+        set_flag_weak(&pause_threads_, 1);
         while (get_flag(&db_is_open_)) {
                 sched_yield();
         }

@@ -49,26 +49,39 @@
 static inline void
 inc_counter(uint64_t *cntr)
 {
-        __atomic_add_fetch(cntr, 1, __ATOMIC_RELEASE);
+        __atomic_add_fetch(cntr, 1, __ATOMIC_RELAXED);
 }
 
 static inline uint64_t
 read_counter(uint64_t *cntr)
 {
-        return __atomic_load_n(cntr, __ATOMIC_CONSUME);
+        return __atomic_load_n(cntr, __ATOMIC_RELAXED);
 }
 
 /*
- * Helper functions for coupled pairs of synchronization flags 
+ * Helper functions for coupled pairs of synchronization
+ * flags. Someone, please, please review the memory model used?
  */
 static inline void
 set_flag(int *flag, int val)
+{
+        __atomic_store_n(flag, val, __ATOMIC_RELEASE);
+}
+
+static inline int
+get_flag(int *flag)
+{
+        return __atomic_load_n(flag, __ATOMIC_ACQUIRE);
+}
+
+static inline void
+set_flag_weak(int *flag, int val)
 {
         __atomic_store_n(flag, val, __ATOMIC_RELAXED);
 }
 
 static inline int
-get_flag(int *flag)
+get_flag_weak(int *flag)
 {
         return __atomic_load_n(flag, __ATOMIC_RELAXED);
 }

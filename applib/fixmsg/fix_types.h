@@ -408,7 +408,8 @@ const FIX_MsgType fix_session_message_types[]
         fmt_SequenceReset,
         fmt_Logout,
         fmt_Logon,
-        fmt_XMLnonFIX
+	fmt_XMLnonFIX,
+	fmt_CustomMsg // terminating the array
 };
 #define FIX_SESSION_MSGTYPES_COUNT (sizeof(fix_session_message_types)/sizeof(FIX_MsgType))
 
@@ -423,5 +424,8 @@ const char fix_session_msgtype_string[FIX_SESSION_MSGTYPES_COUNT][sizeof(uint_fa
         "A",
         "n"
 };
+
+extern int is_session_message(const FIX_MsgType type);
+
 extern int is_session_message(const char soh,
                               const char * const str); // first byte in message type value field
