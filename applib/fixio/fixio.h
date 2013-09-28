@@ -50,8 +50,11 @@
 #endif
 #include "stdlib/disruptor/disruptor_types.h"
 #include "stdlib/local_db/sqlite3.h"
+#include "stdlib/locks/region_lock.h"
 #include "stdlib/locks/guard.h"
-#include "applib/fixio/db_utils.h"
+#include "applib/fixutils/db_utils.h"
+#include "applib/fixutils/stack_utils.h"
+#include "applib/fixmsg/fix_types.h"
 
 struct alfa_io_t;
 struct bravo_io_t;
@@ -59,9 +62,28 @@ struct charlie_io_t;
 struct delta_io_t;
 struct echo_io_t;
 struct foxtrot_io_t;
+struct romeo_io_t;
 struct pusher_thread_args_t;
 struct sucker_thread_args_t;
 struct splitter_thread_args_t;
+
+/*
+ * msg is a pointer to the first byte in a FIX messsage which is
+ * included in the checksum calculation. len is the number of bytes
+ * included in the checksum calculation.
+ */
+static inline int
+get_FIX_checksum(const uint8_t *msg, size_t len)
+{
+        uint64_t sum = 0;
+        size_t n;
+
+        for (n = 0; n < len; ++n) {
+                sum += (uint64_t)msg[n];
+        }
+
+        return (sum % 256);
+}
 
 /*
  * Outstanding issue: Do Popper and Pusher instances live forever? If
@@ -70,7 +92,7 @@ struct splitter_thread_args_t;
  * source/sink socket must be re-initialisable independently from the
  * disruptors themselves.
  *
- * Neither class can be copied nor assigned.
+ * Neither class may be copied nor assigned.
  */
 
 /*
@@ -192,6 +214,8 @@ public:
         /*
          * Starts the pushing of messages into the sink.
          *
+         * Only one thread must call this method.
+         *
          * local_cache: Path of local database caching sent
          * messages. local_cache is ignored if it is NULL.
          *
@@ -215,7 +239,8 @@ public:
          * FIX_ver must be in the format of "FIX.X.Y" or in the case
          * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
          * be a valid value for tag 8, BeginString. FIX_ver will be
-         * ignored if it is NULL.
+         * ignored if it is NULL. You could use
+         * fix_version_string[enum FIX_Version] or a literal string...
          *
          * If sink_fd is non-negative it will be used as the new
          * sink. It is iognored otherwise.
@@ -233,10 +258,8 @@ public:
          * Stops the pushing of message into the sink.
          *
          * Only one thread must call this method.
-         *
-         * Returns 1 (one) if all is well, 0 (zero) otherwise.
          */
-        int stop(void);
+        void stop(void);
 
 private:
         /*
@@ -275,36 +298,35 @@ private:
                 };
 
         /*
-         * The "real" push() method. Please see base class
-         * documentation.
+         * Exclusively used for resending
          */
-        int push_i(const struct timeval * const ttl,
-		   const size_t len,
-		   const uint8_t * const data,
-		   const char * const msg_type);
-
-        /*
-         * The "real" session_push() method. Please see base class
-         * documentation.
-         */
-        int session_push_i(const struct timeval * const ttl,
-			   const size_t len,
-			   const uint8_t * const data,
-			   const char * const msg_type);
+	int push_to_romeo(const struct timeval * const ttl,
+			  const size_t len,
+			  const uint8_t * const data,
+			  const char * const msg_type);
 
 	/*
-	 * Will spin for a bit and make sure that alfa, bravo and
-	 * charlie are empty.
+	 * Returns a suitable formatted value for tag 52
+	 * (SendingTime).
 	 */
-	void spin_buffers(void);
+	void get_sendingtime(char sendingtime[24]) const;
+
+	/*
+	 * Will update tag 52 (SendingTime) to prepare the message for
+	 * resending. It will save a zero terminated copy of the old
+	 * sending time value in orig_sendingtime to be used as value
+	 * for tag 122 (OrigSendingTime).
+	 */
+	void update_sendingtime(PartialMessage * const pmsg,
+				char orig_sendingtime[24]) const;
 
         char FIX_start_bytes_[32];          // standard prefilled FIX start characters - "8=FIX.X.Y<SOH>9="
+	FIX_Version fix_ver_;               // FIX protocol version
 	uint64_t msg_seq_number_;           // message sequence number
 	uint64_t push_loop_count_;
         int FIX_start_bytes_length_;        // strlen of FIX version field
         int error_;                         // errno from the pusher thread
         int pause_thread_;                  // pause pusher thread
-	int resending_;                     // resend is in force
         int db_is_open_;                    // 1 (one) if the database is open, 0 (zero) if not
         int started_;                       // 1 (one) if started, 0 (zero) if not
         struct pusher_thread_args_t *args_; // parameters for the pusher thread
@@ -320,7 +342,13 @@ private:
         charlie_io_t *charlie_;
         const size_t charlie_max_data_length_;
 
+	// specific queue for resending
+        romeo_io_t *romeo_;
+        struct cursor_t romeo_cursor_;
+        struct count_t romeo_reg_number_;
+
         const char soh_; // used to overwrite SOH ('\1') for testing
+	char sending_time_tag_[5]; // "<SOH>52="
 };
 
 
@@ -449,10 +477,16 @@ public:
          *   database will be automatically deleted as soon as the
          *   database connection is closed.
          *
-         * FIX_ver must be in the format of "FIX.X.Y" or in the case
+         * FIX_ver: Must be in the format of "FIX.X.Y" or in the case
          * of FIX 5.x "FIXT.1.1" or similar. It must, in other words,
          * be a valid value for tag 8, BeginString. FIX_ver will be
-         * ignored if it is NULL.
+         * ignored if it is NULL. It must be noted that for FIX
+         * versions 4.0 and 4.1, tag 52 (SendingTime) will be defined
+         * as being in the format "YYYYMMDD-HH:MM:SS". All other FIX
+         * versions will see tag52 defined in format
+         * "YYYYMMDD-HH:MM:SS.sss". This only has effect when
+         * resending messages as an automatic reaction to a
+         * ResendRequest message.
          *
          * *session_message_types: messages with these message types
          * are split into the session queue. The popper takes
@@ -523,6 +557,7 @@ private:
                 };
 
         int source_fd_;
+//	FIX_Version fix_ver_;
         char begin_string_[32];                        // 8="FIX ver"<SOH>9="
         int begin_string_length_;                      // strlen of begin_string_
         int error_;                                    // errno from the sucker thread

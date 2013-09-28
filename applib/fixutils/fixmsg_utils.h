@@ -84,37 +84,9 @@
  * used in the hot path of the FIX RX message parser, so every little
  * bit of verifiable performance counts.
  */
-static inline int
-get_fix_tag(const char **str)
-{
-        int num = 0;
-        char c = **str;
+extern int
+get_fix_tag(const char **str);
 
-        // the tag value must be greater than zero
-        if (('=' == c) || ('0' == c))
-                return -1;
-
-        do {
-                if (('0' > c) || ('9' < c))
-                        return -1;
-
-                // prevent integer overflow
-                if (MAX_TAG__ < num)
-                        return -1;
-
-                num = (10 * num) + (c - '0');
-                ++(*str);
-                c = **str;
-
-                // FIX tags are '=' terminated
-                if (UNLIKELY__('=' == c)) {
-                        ++(*str); // now points to first byte in value
-                        break;
-                }
-        } while (1);
-
-        return num;
-}
 
 /*
  * Return the FIX length value as an integer. str is a pointer to the
@@ -130,33 +102,9 @@ get_fix_tag(const char **str)
  *
  * Performance notes: Please see get_fix_tag() above.
  */
-static inline long long
+extern long long
 get_fix_length_value(const char soh,
-                     const char *str)
-{
-        long long num = 0;
-        char c = *str;
-
-        do {
-                // the value must not be blank nor contain non-digits
-                if (('0' > c) || ('9' < c))
-                        return -1;
-
-                // prevent integer overflow
-                if (MAX_LENGTH__ < num)
-                        return -1;
-
-                num = (10 * num) + (c - '0');
-                ++str;
-                c = *str;
-
-                // terminated with non-digit
-                if (UNLIKELY__(soh == c))
-                        break;
-        } while (1);
-
-        return num;
-}
+                     const char *str);
 
 
 /*
@@ -169,62 +117,7 @@ get_fix_length_value(const char soh,
  * This function is more han 6 times faster than the equivalent one
  * based on sprintf().
  */
-static inline void
+extern void
 uint_to_str(const char terminator,
             uint64_t value,
-            char **str)
-{
-        char *pos = *str;
-        int size = 0;
-
-        if (value >= 10000) {
-                if (value >= 10000000) {
-                        if (value >= 1000000000) {
-                                size = 10;
-                                if (value >= 10000000000) {
-                                        sprintf(*str, "%llu", value);
-					while ('\0' != **str)
-						++(*str);
-					**str = terminator;
-                                        return;
-                                }
-                        } else if (value >= 100000000) {
-                                size = 9;
-                        } else {
-                                size = 8;
-                        }
-                } else {
-                        if (value >= 1000000) {
-                                size = 7;
-                        } else if (value >= 100000) {
-                                size = 6;
-                        } else {
-                                size = 5;
-                        }
-                }
-        } else {
-                if (value >= 100) {
-                        if (value >= 1000) {
-                                size = 4;
-                        } else {
-                                size = 3;
-                        }
-                } else {
-                        if (value >= 10) {
-                                size = 2;
-                        } else {
-                                size = 1;
-                        }
-                }
-        }
-
-	*str += size;
-	pos = *str;
-        *pos = terminator;
-
-        do {
-                *(--pos) = (char)('0' + (value % 10));
-        } while (value /= 10);
-
-        return;
-}
+            char **str);

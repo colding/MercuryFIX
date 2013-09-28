@@ -43,7 +43,7 @@
     #include "ac_config.h"
 #endif
 #include <stdio.h>
-#include "fixmsg_utils.h"
+#include "applib/fixutils/fixmsg_utils.h"
 
 int
 FIXMessageRX::field_contains_data(unsigned int tag)

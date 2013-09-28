@@ -58,22 +58,55 @@
 #define SELECT_MAX_SENT_SEQNUM "SELECT MAX(seqnum) FROM SENT_MESSAGES"
 
 /*
+ * result = x - y. Subtract the `struct timeval' values X and Y,
+ * storing the result in result.
+ */
+static int
+timeval_subtract(struct timeval * const result, 
+		 struct timeval * const x, 
+		 struct timeval * const y)
+{
+	int nsec;
+
+	// Perform the carry for the later subtraction by updating y
+	if (x->tv_usec < y->tv_usec) {
+		nsec = (y->tv_usec - x->tv_usec) / 1000000 + 1;
+		y->tv_usec -= 1000000 * nsec;
+		y->tv_sec += nsec;
+	}
+	if (x->tv_usec - y->tv_usec > 1000000) {
+		nsec = (x->tv_usec - y->tv_usec) / 1000000;
+		y->tv_usec += 1000000 * nsec;
+		y->tv_sec -= nsec;
+	}
+     
+	// Compute the time remaining to wait. tv_usec is certainly
+	// positive
+	result->tv_sec = x->tv_sec - y->tv_sec;
+	result->tv_usec = x->tv_usec - y->tv_usec;
+
+	// Return 1 if result is negative
+	return (x->tv_sec < y->tv_sec);
+}
+
+/*
  * Returns 1 (one) if now os greater than ttl, 0 (zero) otherwise.
  */
 static inline int
 is_ttl_expired(const time_t ttl_tv_sec,
-               const suseconds_t ttl_tv_usec)
+               const suseconds_t ttl_tv_usec,
+	       struct timeval & remaining_ttl)
 {
+        struct timeval ttl = { ttl_tv_sec, ttl_tv_usec };
         struct timeval now;
 
         gettimeofday(&now, NULL);
-        if (now.tv_sec > ttl_tv_sec)
-                return 1;
+	if (timeval_subtract(&remaining_ttl, &ttl, &now)) {
+		remaining_ttl.tv_sec = 0;
+		remaining_ttl.tv_usec = 0;
+	}
 
-        if (now.tv_sec < ttl_tv_sec)
-                return 0;
-
-        return (now.tv_usec > ttl_tv_usec) ? 1 : 0;
+	return (!remaining_ttl.tv_sec && !remaining_ttl.tv_usec);
 }
 
 
@@ -430,13 +463,6 @@ MsgDB::get_sent_msgs(uint64_t start,
                         goto out;
                 }
 
-                ttl_sec = (time_t)sqlite3_column_int64(select_statement, 0);
-                ttl_usec = (suseconds_t)sqlite3_column_int64(select_statement, 1);
-                if (is_ttl_expired(ttl_sec, ttl_usec)) {
-			retv->push_back(NULL);
-                        continue;
-		}
-
                 pmsg = new (std::nothrow) PartialMessage;
                 if (!pmsg) {
                         delete retv;
@@ -444,6 +470,14 @@ MsgDB::get_sent_msgs(uint64_t start,
                         retv = NULL;
                         goto out;
                 }
+
+                ttl_sec = (time_t)sqlite3_column_int64(select_statement, 0);
+                ttl_usec = (suseconds_t)sqlite3_column_int64(select_statement, 1);
+                if (is_ttl_expired(ttl_sec, ttl_usec, pmsg->ttl)) {
+			retv->push_back(pmsg); 
+                        continue;
+		}
+
                 pmsg->msg_type = strdup((const char*)sqlite3_column_text(select_statement, 2));
                 pmsg->length = sqlite3_column_int64(select_statement, 3);
                 pmsg->part_msg = (uint8_t*)malloc(pmsg->length + 5); // "+ 5" is to avoid realloc when inserting "43=Y<SOH>"

@@ -51,7 +51,7 @@
 #include "stdlib/network/network.h"
 #include "stdlib/disruptor/memsizes.h"
 #include "applib/fixio/fixio.h"
-#include "applib/fixio/db_utils.h"
+#include "applib/fixutils/db_utils.h"
 
 /*
  * Valid FIX sample messages with the real SOH:
@@ -298,23 +298,6 @@ static const char *noise[16] =
         "cwu",
         "9=9=ecewe#€€FC%",
 };
-
-/*
- * msg is a pointer to the first character in a zero terminated FIX
- * messsage
- */
-static inline unsigned int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
-}
 
 /*
  * Returns a pointer to a very long FIX message with garbage content
@@ -647,7 +630,9 @@ START_TEST(test_FIX_retrieve_sent)
                 case 8:
                 case 10:
                 case 13:
-                        fail_unless(NULL == pmsg);
+			if (pmsg) {
+				fail_unless(!pmsg->length);
+			}
                         continue;
                 default:
                         fail_unless(NULL != pmsg);
@@ -1133,7 +1118,6 @@ START_TEST(test_FIX_challenge_buffer_boundaries_and_have_noise)
         uint32_t len;
         uint32_t msgtype_offset;
         uint8_t*msg;
-        const struct timeval ttl = { 0, 0 };
         FIX_Popper *popper = new (std::nothrow) FIX_Popper(DELIM);
         FIX_Pusher *pusher = new (std::nothrow) FIX_Pusher(DELIM);
         int sockets[2] = { -1, -1 };
@@ -1191,7 +1175,7 @@ fixio_suite(void)
 }
 
 int
-main(int argc, char **argv)
+main(int /* argc */, char ** /* argv */)
 {
         int number_failed;
         Suite *s = fixio_suite();

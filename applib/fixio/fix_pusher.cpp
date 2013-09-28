@@ -77,7 +77,7 @@
  *                  slow disruptor if they are too big)
  *
  *
- *     (Alfa)  Fast disruptor            (Bravo) Slow disruptor          (Charlie) Session message send disruptor
+ *      (Alfa) Fast disruptor            (Bravo) Slow disruptor          (Charlie) Session message send disruptor
  *  (large memory areas, big enough    (entry with pointer to message  (exclusively used by the FIX session engine)
  *   to hold an entire message, as         and the size of it)
  *   entries)
@@ -86,6 +86,9 @@
  *
  *                                   File descriptor data sink - Data flows down here
  *
+ *
+ * In the same layer as Alfa, Bravo and Charlie, we have Romeo. A
+ * Bravo like disruptor used exclusively when resending.
  *
  * ################################################################################################################
  *
@@ -149,7 +152,7 @@
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
 #include "applib/fixmsg/fixmsg.h"
-#include "stack_utils.h"
+#include "applib/fixutils/stack_utils.h"
 
 /*
  * Layout of FIX pusher data buffer:
@@ -216,6 +219,7 @@ struct pusher_thread_args_t {
         alfa_io_t *alfa;
         bravo_io_t *bravo;
         charlie_io_t *charlie;
+        romeo_io_t *romeo;
         const char *FIX_start;
         int *FIX_start_length;
         char soh;
@@ -309,6 +313,32 @@ DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(charlie_io_t, charli
 DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
+
+/*
+ * Romeo) One internal publishers, one entry processor,
+ * sizeof(size_t)+sizeof(char*) entry size, 128 entries
+ */
+#define ROMEO_QUEUE_LENGTH (128) // MUST be a power of two
+#define ROMEO_ENTRY_PROCESSORS (1)
+struct romeo_t {
+        size_t allocated_size;
+        uint8_t *data;
+};
+
+DEFINE_ENTRY_TYPE(struct romeo_t, romeo_entry_t);
+DEFINE_RING_BUFFER_TYPE(ROMEO_ENTRY_PROCESSORS, ROMEO_QUEUE_LENGTH, romeo_entry_t, romeo_io_t);
+DEFINE_RING_BUFFER_MALLOC(romeo_io_t, romeo_);
+DEFINE_RING_BUFFER_INIT(ROMEO_QUEUE_LENGTH, romeo_io_t, romeo_);
+DEFINE_RING_BUFFER_SHOW_ENTRY_FUNCTION(romeo_entry_t, romeo_io_t, romeo_);
+DEFINE_RING_BUFFER_ACQUIRE_ENTRY_FUNCTION(romeo_entry_t, romeo_io_t, romeo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_REGISTER_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_UNREGISTER_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_BLOCKING_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_WAITFOR_NONBLOCKING_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PROCESSOR_BARRIER_RELEASEENTRY_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(romeo_io_t, romeo_);
+DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(romeo_io_t, romeo_);
+
 
 static inline uint32_t
 get_length_of_partial_msg(uint8_t * const push_buffer)
@@ -575,6 +605,7 @@ push_alfa(struct cursor_t * const alfa_cursor,
                 total = 0;
                 for (n.sequence = alfa_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         alfa_entry = alfa_ring_buffer_acquire_entry(args->alfa, &n);
+
                         vdata[idx].iov_len = get_length_of_partial_msg(alfa_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, alfa_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
@@ -668,6 +699,7 @@ push_charlie(struct cursor_t * const charlie_cursor,
                 total = 0;
                 for (n.sequence = charlie_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
                         charlie_entry = charlie_ring_buffer_acquire_entry(args->charlie, &n);
+
                         vdata[idx].iov_len = get_length_of_partial_msg(charlie_entry->content);
                         vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, charlie_entry->content, &vdata[idx].iov_len, args);
                         total += vdata[idx].iov_len;
@@ -695,6 +727,55 @@ push_charlie(struct cursor_t * const charlie_cursor,
 }
 
 /*
+ * This pusher is using the blocking variant of wait_for to guarantee
+ * that an entry has been pushed into the sink.
+ */
+static int
+push_romeo(struct cursor_t * const romeo_cursor,
+           const struct count_t * const romeo_reg_number,
+           uint64_t * const msg_seq_number,
+           struct pusher_thread_args_t * const args,
+           struct iovec * const vdata)
+{
+        int retv;
+        size_t idx = 0;
+        size_t total = 0;
+        struct cursor_t n;
+        struct cursor_t cursor_upper_limit;
+        struct romeo_entry_t *romeo_entry;
+
+        cursor_upper_limit.sequence = romeo_cursor->sequence;
+        romeo_entry_processor_barrier_wait_for_blocking(args->romeo, &cursor_upper_limit);
+
+	for (n.sequence = romeo_cursor->sequence; n.sequence <= cursor_upper_limit.sequence; ++n.sequence) { // batching
+		romeo_entry = romeo_ring_buffer_acquire_entry(args->romeo, &n);
+
+		vdata[idx].iov_len = get_length_of_partial_msg(romeo_entry->content.data);
+		vdata[idx].iov_base = (void*)complete_FIX_message(msg_seq_number, romeo_entry->content.data, &vdata[idx].iov_len, args);
+		total += vdata[idx].iov_len;
+
+		++idx;
+		if (UNLIKELY(IOV_MAX == idx)) {
+			retv = do_writev(*args->sink_fd, total, idx, vdata);
+			if (retv) {
+				M_WARNING("%s", strerror(retv));
+				return retv;
+			}
+			idx = 0;
+		}
+	}
+	retv = do_writev(*args->sink_fd, total, idx, vdata);
+	if (retv) {
+		M_WARNING("%s", strerror(retv));
+		return retv;
+	}
+	romeo_entry_processor_barrier_release_entry(args->romeo, romeo_reg_number, &cursor_upper_limit);
+	romeo_cursor->sequence = ++cursor_upper_limit.sequence;
+
+        return 0;
+}
+
+/*
  * This function will NOT free arg
  */
 void*
@@ -717,6 +798,7 @@ pusher_thread_func(void *arg)
                 M_ERROR("pusher thread cannot run");
                 abort();
         }
+	msg_seq_number = *args->msg_seq_number;
 
         struct iovec *vdata = (struct iovec*)malloc(sizeof(struct iovec)*IOV_MAX);
         if (!vdata) {
@@ -735,6 +817,8 @@ pusher_thread_func(void *arg)
         // Push data into sink until told to stop.
         do {
                 if (UNLIKELY(get_flag(args->pause_thread))) {
+			__atomic_store_n(args->msg_seq_number, msg_seq_number, __ATOMIC_RELEASE);
+
                         if (!args->db->close()) {
                                 M_ERROR("could not close local database");
                                 continue;
@@ -744,6 +828,7 @@ pusher_thread_func(void *arg)
                         do {
                                 sched_yield();
                         } while (get_flag(args->pause_thread));
+			msg_seq_number = __atomic_load_n(args->msg_seq_number, __ATOMIC_ACQUIRE);
 
                         if (!args->db->open()) {
                                 M_ERROR("could not open local database");
@@ -772,7 +857,8 @@ pusher_thread_func(void *arg)
                         set_flag(args->error, rval);
                         goto out;
                 }
-		inc_counter(args->loop_count);
+
+//		inc_counter(args->loop_count);
         } while (1);
 out:
         free(vdata);
@@ -793,6 +879,8 @@ FIX_Pusher::FIX_Pusher(const char soh)
           charlie_max_data_length_(CHARLIE_MAX_DATA_SIZE),
           soh_(soh)
 {
+	fix_ver_ = CUSTOM;
+	sprintf(sending_time_tag_, "%c52=", soh_);
         memset(FIX_start_bytes_, '\0', sizeof(FIX_start_bytes_));
         FIX_start_bytes_length_ = 0;
         sink_fd_ = -1;
@@ -800,24 +888,18 @@ FIX_Pusher::FIX_Pusher(const char soh)
         alfa_ = NULL;
         bravo_ = NULL;
         charlie_ = NULL;
+        romeo_ = NULL;
         args_ = NULL;
         db_is_open_ = 0;
         pause_thread_ = 1;
-	resending_ = 0;
         started_ = 0;
 	msg_seq_number_ = 0;
-	push_loop_count_ = 0;
 }
 
 int
 FIX_Pusher::init(const char * const local_cache)
 {
         stop();
-
-	if (!local_cache || !db_.set_db_path(local_cache)) {
-		M_ALERT("could not set local database path");
-		goto err;
-	}
 
         if (!alfa_) {
                 alfa_ = alfa_ring_buffer_malloc();
@@ -846,24 +928,36 @@ FIX_Pusher::init(const char * const local_cache)
                 charlie_ring_buffer_init(charlie_);
         }
 
+        if (!romeo_) {
+                romeo_ = romeo_ring_buffer_malloc();
+                if (!romeo_) {
+                        M_ALERT("no memory");
+                        goto err;
+                }
+                romeo_ring_buffer_init(romeo_);
+		romeo_cursor_.sequence = romeo_entry_processor_barrier_register(romeo_, &romeo_reg_number_);
+        }
+
         if (!args_) {
 		// ensure that the thread is started as paused
 		pause_thread_ = 1;
 
-		// Get last message sequence number sent - tag 34.  The
-		// sequence number will be incremented whenever a message is
-		// sent.
+		// Get last message sequence number sent, tag 34, and
+		// open the database.  The sequence number will be
+		// incremented whenever a message is sent.
+		if (!local_cache || !db_.set_db_path(local_cache)) {
+			M_ALERT("could not set local database path");
+			goto err;
+		}
 		if (!db_.open()) {
 			M_ERROR("could not open local database");
-			abort();
+			goto err;
 		}
 		set_flag(&db_is_open_, 1);
 		if (!db_.get_latest_sent_seqnum(msg_seq_number_)) {			
 			M_ALERT("error getting latest sent sequence number");
 			goto err;
 		}
-		db_.close();
-		set_flag(&db_is_open_, 0);
 
                 args_ = (pusher_thread_args_t*)malloc(sizeof(pusher_thread_args_t));
                 if (!args_) {
@@ -881,6 +975,7 @@ FIX_Pusher::init(const char * const local_cache)
                 args_->alfa = alfa_;
                 args_->bravo = bravo_;
                 args_->charlie = charlie_;
+                args_->romeo = romeo_;
                 args_->FIX_start = FIX_start_bytes_;
                 args_->FIX_start_length = &FIX_start_bytes_length_;
                 args_->soh = soh_;
@@ -904,18 +999,6 @@ FIX_Pusher::push(const struct timeval * const ttl,
                  const size_t len,
                  const uint8_t * const data,
                  const char * const msg_type)
-{
-	if (!get_flag(&resending_))
-		return push_i(ttl, len, data, msg_type);
-
-	return EAGAIN;
-}
-
-int
-FIX_Pusher::push_i(const struct timeval * const ttl,
-		   const size_t len,
-		   const uint8_t * const data,
-		   const char * const msg_type)
 {
         struct timeval time_to_live;
         struct cursor_t alfa_cursor;
@@ -984,25 +1067,71 @@ FIX_Pusher::push_i(const struct timeval * const ttl,
 }
 
 int
-FIX_Pusher::session_push(const struct timeval * const ttl,
-			 const size_t len,
-			 const uint8_t * const data,
-			 const char * const msg_type)
+FIX_Pusher::push_to_romeo(const struct timeval * const ttl,
+			  const size_t len,
+			  const uint8_t * const data,
+			  const char * const msg_type)
 {
-	if (!get_flag(&resending_))
-		return session_push_i(ttl, len, data, msg_type);
+        struct timeval time_to_live;
+        struct cursor_t romeo_cursor;
+        struct romeo_entry_t *romeo_entry;
+        const size_t strl = strnlen(msg_type, MSG_TYPE_MAX_LENGTH + 1) + 1;
 
-	return EAGAIN;
+        if (UNLIKELY(MSG_TYPE_MAX_LENGTH < strl))
+                return EINVAL;
+
+        /* calculate resend expire time */
+        gettimeofday(&time_to_live, NULL);
+        time_to_live.tv_sec += ttl->tv_sec;
+        time_to_live.tv_usec += ttl->tv_usec;
+        if (time_to_live.tv_usec >= 1000000) {
+                time_to_live.tv_usec -= 1000000;
+                ++time_to_live.tv_sec;
+        }
+
+	romeo_publisher_next_entry_blocking(romeo_, &romeo_cursor);
+	romeo_entry = romeo_ring_buffer_acquire_entry(romeo_, &romeo_cursor);
+
+	// Either the first time and therefore NULL or
+	// something allocated from a previous parse. So we
+	// reuse or allocate new memory. This migth lead to
+	// some interresting memory pressure once it has run
+	// for a while...
+	//
+	// The sizeof(uint32_t) (a.k.a MSG_TYPE_STRING_OFFSET)
+	// header is dead data but needs to be there to offset
+	// the message data correctly, due to the data length
+	// being encoded into these 4 bytes.
+	if (romeo_entry->content.allocated_size < len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL) {
+		free(romeo_entry->content.data);
+		romeo_entry->content.data = (uint8_t*)malloc(len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL);
+		if (romeo_entry->content.data) {
+			romeo_entry->content.allocated_size = len + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + FIX_BUFFER_RESERVED_TAIL;
+		} else {
+			romeo_entry->content.allocated_size = 0;
+			romeo_publisher_commit_entry_blocking(romeo_, &romeo_cursor);
+
+			return ENOMEM;
+		}
+	}
+	set_length_of_partial_msg(romeo_entry->content.data, len);
+	set_msg_type(romeo_entry->content.data, msg_type);
+	set_ttl(romeo_entry->content.data, &time_to_live);
+	memcpy(romeo_entry->content.data + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD, data, len);
+
+	romeo_publisher_commit_entry_blocking(romeo_, &romeo_cursor);
+
+        return get_flag(&error_);
 }
 
 /*
  * Only called from one thread
  */
 int
-FIX_Pusher::session_push_i(const struct timeval * const ttl,
-			   const size_t len,
-			   const uint8_t * const data,
-			   const char * const msg_type)
+FIX_Pusher::session_push(const struct timeval * const ttl,
+			 const size_t len,
+			 const uint8_t * const data,
+			 const char * const msg_type)
 {
         struct timeval time_to_live;
         struct cursor_t charlie_cursor;
@@ -1041,15 +1170,70 @@ FIX_Pusher::session_push_i(const struct timeval * const ttl,
 }
 
 void 
-FIX_Pusher::spin_buffers(void)
+FIX_Pusher::get_sendingtime(char sendingtime[24]) const
 {
-	uint64_t push_itr;
+	char *pos;
+        time_t curtime;
+	struct timeval st;
 
-	push_itr = read_counter(&push_loop_count_);
-	push_itr += 2;
-	do {
-		sched_yield();
-	} while (push_itr < read_counter(&push_loop_count_));
+	if (gettimeofday(&st, NULL)) {
+		M_ALERT("gettimeofday() failed: %s", strerror(errno));
+		abort();
+	}
+        curtime = st.tv_sec;
+	
+	switch (fix_ver_) {
+        case FIX_4_0:
+        case FIX_4_1:
+		strftime(sendingtime, strlen("YYYYMMDD-HH:MM:SS") + 1, "%Y%m%d-%H:%M:%S", gmtime(&curtime));
+		break;
+	case CUSTOM:
+        default:
+		strftime(sendingtime, strlen("YYYYMMDD-HH:MM:SS.") + 1, "%Y%m%d-%H:%M:%S.", gmtime(&curtime));
+		pos = &sendingtime[strlen("YYYYMMDD-HH:MM:SS.")];
+		sprintf(pos, "%03d", st.tv_usec/1000);
+		break;
+	}
+}
+
+void 
+FIX_Pusher::update_sendingtime(PartialMessage * const pmsg,
+			       char orig_sendingtime[24]) const
+{
+	char *pos;
+        time_t curtime;
+	struct timeval st;
+
+	if (gettimeofday(&st, NULL)) {
+		M_ALERT("gettimeofday() failed: %s", strerror(errno));
+		abort();
+	}
+        curtime = st.tv_sec;
+	
+	// pending bug if "<SOH>52=" is present in a data field...
+	pos = strnstr((const char*)pmsg->part_msg, sending_time_tag_, pmsg->length);
+	pos += strlen(sending_time_tag_); // or maybe just "4"...?
+
+	switch (fix_ver_) {
+        case FIX_4_0:
+        case FIX_4_1:
+		strncpy(orig_sendingtime, pos, strlen("YYYYMMDD-HH:MM:SS"));
+		orig_sendingtime[strlen("YYYYMMDD-HH:MM:SS")] = '\0';
+		strftime(pos, strlen("YYYYMMDD-HH:MM:SS") + 1, "%Y%m%d-%H:%M:%S", gmtime(&curtime));
+		pos += strlen("YYYYMMDD-HH:MM:SS");
+		*pos = soh_;
+		break;
+	case CUSTOM:
+        default:
+		strncpy(orig_sendingtime, pos, strlen("YYYYMMDD-HH:MM:SS.sss"));
+		orig_sendingtime[strlen("YYYYMMDD-HH:MM:SS.sss")] = '\0';
+		strftime(pos, strlen("YYYYMMDD-HH:MM:SS.") + 1, "%Y%m%d-%H:%M:%S.", gmtime(&curtime));
+		pos += strlen("YYYYMMDD-HH:MM:SS.");
+		sprintf(pos, "%03d", st.tv_usec/1000);
+		pos += 3;
+		*pos = soh_;
+		break;
+	}
 }
 
 int 
@@ -1059,45 +1243,73 @@ FIX_Pusher::resend(const uint64_t start,
         PartialMessageList *pmsg_list;
         PartialMessage *pmsg;
         FIXMessageTX tx_msg(soh_);
-	//char tmp[48];
+	const struct timeval *ttl;
+        size_t len;
+        const uint8_t *data;
+        const char *msg_type;
+	char tmp[24];
+	uint64_t orig_seqnum;
+	uint64_t seqnum = start - 1;
 	uint64_t n;
+	int retv = 1;
+
+        struct iovec *vdata = (struct iovec*)malloc(sizeof(struct iovec)*IOV_MAX);
+        if (!vdata) {
+                M_ALERT("no memory");
+                return 1;
+        }
 
 	if (!tx_msg.init())
 		return 1;
 
-	set_flag(&resending_, 1);
-
 	/*
-	 * This is to ensure that all messages has been emptied from
-	 * alfa, bravo and charlie so that the resend messages are
-	 * guaranteed to be send in one coherent chunk.
+	 * This is to pause alfa, bravo and charlie so that the resend
+	 * messages are guaranteed to be send in one coherent chunk.
 	 */
-	spin_buffers();
+	this->stop();
+	orig_seqnum = __atomic_load_n(&msg_seq_number_, __ATOMIC_ACQUIRE);
 
         pmsg_list = db_.get_sent_msgs(start, end);
 	for (n = 0; n < pmsg_list->size(); ++n) {
 		pmsg = pmsg_list->get_at(n);
-		if (!pmsg) {
-			spin_buffers();
-			tx_msg.append_field(35, strlen("4"), (const uint8_t*)"4"); // SequenseReset
-			tx_msg.append_field(123, strlen("Y"), (const uint8_t*)"Y"); // GapFill
 
-			
-			tx_msg.append_field(36, strlen("4"), (const uint8_t*)"4"); // NewSeqNo
-		} else {
-			
+		if (!pmsg || !pmsg->length) { // GapFill
+			if (!tx_msg.clone_from(pmsg))
+				goto out;;
+
+			tx_msg.append_field(35, strlen("4"), (const uint8_t*)"4");  // SequenseReset
+			tx_msg.append_field(123, strlen("Y"), (const uint8_t*)"Y"); // GapFill	
+
+			sprintf(tmp, "%llu", seqnum + 1);
+			tx_msg.append_field(36, strlen(tmp), (const uint8_t*)tmp); // NewSeqNo
+
+			get_sendingtime(tmp);
+			tx_msg.append_field(52, strlen(tmp), (const uint8_t*)tmp); // SendingTime
+		} else { // resend
+			update_sendingtime(pmsg, tmp);			
+			if (!tx_msg.clone_from(pmsg))
+				goto out;;
+
+			tx_msg.append_field(122, strlen(tmp), (const uint8_t*)tmp); // OrigSendingTime
 		}
-	}
-	/*
-	 * To guarantee that resend messages are not interleaved with
-	 * new messages.
-	 */
-	spin_buffers();
 
-	set_flag(&resending_, 0);
+		tx_msg.expose(&ttl, len, &data, &msg_type);
+		if (push_to_romeo(ttl, len, data, msg_type))
+			goto out;
+		if (push_romeo(&romeo_cursor_, &romeo_reg_number_, &seqnum, args_, vdata))
+			goto out;
+
+		++seqnum;
+	}
+	retv = 0;
+out:
+	free(vdata);
 	delete pmsg_list;
 
-	return 0;
+	__atomic_store_n(&msg_seq_number_, orig_seqnum, __ATOMIC_RELEASE);
+	this->start(NULL, NULL, -1);
+
+	return retv;
 }
 
 int
@@ -1120,6 +1332,15 @@ FIX_Pusher::start(const char * const local_cache,
                 }
                 snprintf(FIX_start_bytes_, sizeof(FIX_start_bytes_), "8=%s%c9=", FIX_ver, soh_);
                 FIX_start_bytes_length_ = strlen(FIX_start_bytes_);
+
+		unsigned int n;
+		fix_ver_ = CUSTOM;
+		for (n = 0; n < FIX_VERSION_TYPES_COUNT; ++n) {
+			if (!strcmp(FIX_ver, fix_version_string[n])) {
+				fix_ver_ = (FIX_Version)n;
+				break;
+			}
+		}
         }
         if (!FIX_start_bytes_[0]) {
                 M_ALERT("no FIX version specified");
@@ -1153,11 +1374,11 @@ out:
         return get_flag(&started_);
 }
 
-int
+void
 FIX_Pusher::stop(void)
 {
         if (!get_flag(&started_))
-                return 1;
+                return;
 
         set_flag(&pause_thread_, 1);
         while (get_flag(&db_is_open_)) {
@@ -1166,5 +1387,5 @@ FIX_Pusher::stop(void)
 
         set_flag(&started_, 0);
 
-        return !get_flag(&started_);
+        return;
 }

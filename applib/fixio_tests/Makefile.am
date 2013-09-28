@@ -21,12 +21,12 @@ check_fixio_LDFLAGS = -all-static
 check_fixio_SOURCES = \
 	check_fixio.cpp \
 	../fixio/fixio.h \
-	../fixio/db_utils.h \
-	../fixio/db_utils.cpp
+	../fixutils/db_utils.h
 
-check_fixio_CPPFLAGS = $(CHECK_CFLAGS)
+check_fixio_CPPFLAGS = $(CHECK_CFLAGS) $(MERCURY_CXXFLAGS)
 check_fixio_LDADD = \
 	$(CHECK_LIBS) \
+	$(MERCURY_top_dir)/applib/fixutils/libfixutils.la \
 	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la \

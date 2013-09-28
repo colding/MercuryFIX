@@ -242,10 +242,10 @@ END_TEST
 START_TEST(test_FIXMessageTX_composition)
 {
         int n;
-        uint8_t *value;
         size_t len;
         const uint8_t *data;
         const char *msg_type;
+	const struct timeval *ttl;
         FIXMessageTX tx_msg(DELIM);
 
         fail_unless(1 == tx_msg.init(), NULL);
@@ -259,7 +259,7 @@ START_TEST(test_FIXMessageTX_composition)
                 fail_unless(1 == tx_msg.append_field(test_fields_0[n].tag, strlen(test_fields_0[n].value), (const uint8_t*)test_fields_0[n].value), NULL);
                 ++n;
         }
-        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(1 == tx_msg.expose(&ttl, len, &data, &msg_type), NULL);
         fail_unless(0 == memcmp(data, partial_messages_tx[0], len), NULL);
         fail_unless(0 == strcmp("FOOBAR", msg_type), NULL);
 
@@ -272,7 +272,7 @@ START_TEST(test_FIXMessageTX_composition)
                 fail_unless(1 == tx_msg.append_field(test_fields_1[n].tag, strlen(test_fields_1[n].value), (const uint8_t*)test_fields_1[n].value), NULL);
                 ++n;
         }
-        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(1 == tx_msg.expose(&ttl, len, &data, &msg_type), NULL);
         fail_unless(0 == memcmp(data, partial_messages_tx[1], len), NULL);
         fail_unless(0 == strcmp("8", msg_type), NULL);
 
@@ -284,7 +284,7 @@ START_TEST(test_FIXMessageTX_composition)
                 fail_unless(1 == tx_msg.append_field(test_fields_0[n].tag, strlen(test_fields_0[n].value), (const uint8_t*)test_fields_0[n].value), NULL);
                 ++n;
         }
-        fail_unless(1 == tx_msg.expose(len, &data, &msg_type), NULL);
+        fail_unless(1 == tx_msg.expose(&ttl, len, &data, &msg_type), NULL);
         fail_unless(0 == memcmp(data, partial_messages_tx[0], len), NULL);
         fail_unless(0 == strcmp("8", msg_type), NULL);
 }

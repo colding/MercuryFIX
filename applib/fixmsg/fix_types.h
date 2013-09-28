@@ -44,9 +44,15 @@
 #endif
 #include <inttypes.h>
 
+/*
+ * The CUSTOM version will allow a custom messaging protocol to be
+ * build on top of the Mercury FIX engine. A precondition for CUSTOM
+ * is that tags 52 and 122 are of the fixed format
+ * "YYYYMMDD-HH:MM:SS.sss".
+ */
 enum FIX_Version : unsigned int
 {
-	CUSTOM = 0, // this will allow a custom messaging protocol to be build on top of the Mercury FIX engine
+	CUSTOM = 0,
         FIX_4_0,
         FIX_4_1,
         FIX_4_2,

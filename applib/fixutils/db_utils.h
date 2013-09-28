@@ -55,7 +55,8 @@ public:
 	PartialMessage() 
 		: length(0), 
 		  msg_type(NULL),
-		  part_msg(NULL)
+		  part_msg(NULL),
+		  ttl{0,0}
 		{
 		};
 
@@ -68,6 +69,7 @@ public:
 	uint32_t length;
 	char *msg_type;
 	uint8_t *part_msg;
+	struct timeval ttl;
 };
 
 class PartialMessageList {

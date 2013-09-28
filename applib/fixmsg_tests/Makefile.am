@@ -22,9 +22,10 @@ check_fixmsg_SOURCES = \
 	check_fixmsg.cpp \
 	../fixmsg/fixmsg.h
 
-check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) -std=gnu++11
+check_fixmsg_CPPFLAGS = $(CHECK_CFLAGS) $(MERCURY_CXXFLAGS)
 check_fixmsg_LDADD = \
 	$(CHECK_LIBS) \
+	$(MERCURY_top_dir)/applib/fixutils/libfixutils.la \
 	$(MERCURY_top_dir)/applib/fixmsg/libfixmsg.la \
 	$(MERCURY_top_dir)/applib/fixio/libfixio.la \
 	$(MERCURY_top_dir)/stdlib/log/liblog.la \

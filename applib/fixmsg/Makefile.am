@@ -28,8 +28,7 @@ libfixmsg_la_SOURCES = \
 	FIX50.cpp \
 	FIX50SP1.cpp \
 	FIX50SP2.cpp \
-	FIXT11.cpp \
-	fixmsg_utils.cpp
+	FIXT11.cpp
 
 libfixmsg_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
 libfixmsg_la_CXXFLAGS = $(MERCURY_CXXFLAGS)

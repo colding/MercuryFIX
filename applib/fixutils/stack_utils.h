@@ -49,13 +49,13 @@
 static inline void
 inc_counter(uint64_t *cntr)
 {
-        __atomic_add_fetch(cntr, 1, __ATOMIC_RELAXED);
+        __atomic_add_fetch(cntr, 1, __ATOMIC_RELEASE);
 }
 
 static inline uint64_t
 read_counter(uint64_t *cntr)
 {
-        return __atomic_load_n(cntr, __ATOMIC_RELAXED);
+        return __atomic_load_n(cntr, __ATOMIC_CONSUME);
 }
 
 /*

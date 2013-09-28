@@ -9,7 +9,7 @@
 # without any warranty.
 #
 
-SUBDIRS = fixio fixmsg fixio_tests fixmsg_tests
+SUBDIRS = fixutils fixio fixmsg fixio_tests fixmsg_tests
 
 DISTCLEANFILES = $(BUILT_SOURCES) $(CLEAN_IN_FILES) Makefile
 CLEANFILES = *~

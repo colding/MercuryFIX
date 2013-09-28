@@ -49,8 +49,10 @@
 #include <stdlib.h>
 #include "stdlib/disruptor/memsizes.h"
 #include "applib/fixmsg/fix_types.h"
+#include "applib/fixutils/db_utils.h"
 
 #define INITIAL_TX_BUFFER_SIZE (2048)
+#define MAX_MSGTYPE_LENGTH (CACHE_LINE_SIZE)
 
 /*
  * FIXMessageTX will prepare a message for sending by the FIXIO
@@ -62,12 +64,14 @@ class FIXMessageTX
 public:
         FIXMessageTX(const char soh)
                 : soh_(soh),
+		  ttl_{0,0},
+		  msg_type_{'\0'},
                   buf_size_(0),
                   length_(0),
+		  sending_time_appended_(0),
                   buf_(NULL),
                   pos_(NULL)
                 {
-                        msg_type_[0] = '\0';
                 };
 
         ~FIXMessageTX()
@@ -84,6 +88,7 @@ public:
          */
         int init(void)
                 {
+			free(buf_);
                         buf_ = (uint8_t*)malloc(INITIAL_TX_BUFFER_SIZE);
                         pos_ = buf_;
                         if (pos_) {
@@ -92,6 +97,11 @@ public:
                                 length_ = 1;
                                 ++pos_;
                         }
+                        msg_type_[0] = '\0';
+			sending_time_appended_ = 0;
+
+			ttl_.tv_sec = 0;
+			ttl_.tv_usec = 0;
 
                         return (buf_ ? 1 : 0);
                 };
@@ -105,6 +115,9 @@ public:
          * only if, tag is 35 (MsgType).
          *
          * Returns 1 (one) if all is well, 0 (zero) if not.
+	 *
+	 * NOTE: It is required that sending time (tag 52) is appended
+	 * before any data typed field.
          */
         virtual int append_field(const unsigned int tag,
 				 const size_t length,
@@ -115,7 +128,8 @@ public:
          * first invocation of insert_field() after this method has
          * been invoked, will be inserting data into a blank message.
          *
-         * expose() will fail if message type has not been inserted.
+         * expose() will fail if message type (tag 35) or sending time
+         * (tag 52) has not been inserted.
          *
          * *msg_type will remain valid until a new message type is
          * inserted using insert_field(). You may refrain from
@@ -127,15 +141,31 @@ public:
          *
          * Returns 1 (one) if all is well, 0 (zero) if not.
          */
-        int expose(size_t & len,
+        int expose(const struct timeval **ttl,
+		   size_t & len,
                    const uint8_t **data,
                    const char **msg_type);
 
+	/*
+	 * Imports the partial message's state into this TX
+	 * object. Any state present will be overwritten. You can
+	 * continue calling append_field() or expose() after the
+	 * partial message has been imported.
+	 *
+	 * The FIXMessageTX will be left in an initial state if pmsg
+	 * is NULL.
+         *
+         * Returns 1 (one) if all is well, 0 (zero) if not.
+	 */
+	int clone_from(const PartialMessage * const pmsg);
+
 private:
         const char soh_;
-        char msg_type_[CACHE_LINE_SIZE];
+	struct timeval ttl_;
+        char msg_type_[MAX_MSGTYPE_LENGTH];
         size_t buf_size_;
         size_t length_;
+	int sending_time_appended_;
         uint8_t *buf_;
         uint8_t *pos_;
 };

@@ -16,9 +16,6 @@ libfixio_la_LDFLAGS = -static
 
 libfixio_la_SOURCES = \
 	fixio.h \
-	db_utils.h \
-	db_utils.cpp \
-	stack_utils.h \
 	fix_pusher.cpp \
 	fix_popper.cpp
 

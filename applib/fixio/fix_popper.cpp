@@ -149,7 +149,7 @@
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
 #include "applib/fixmsg/fix_types.h"
-#include "stack_utils.h"
+#include "applib/fixutils/stack_utils.h"
 
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.

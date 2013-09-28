@@ -11,19 +11,18 @@
 
 SUBDIRS = 
 
-noinst_LTLIBRARIES = libfixio.la
-libfixio_la_LDFLAGS = -static
+noinst_LTLIBRARIES = libfixutils.la
+libfixutils_la_LDFLAGS = -static
 
-libfixio_la_SOURCES = \
-	fixio.h \
+libfixutils_la_SOURCES = \
 	db_utils.h \
 	db_utils.cpp \
-	stack_utils.h \
-	fix_pusher.cpp \
-	fix_popper.cpp
+	fixmsg_utils.h \
+	fixmsg_utils.cpp \
+	stack_utils.h
 
-libfixio_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
-libfixio_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
+libfixutils_la_CPPFLAGS = $(MERCURY_CPPFLAGS)
+libfixutils_la_CXXFLAGS = $(MERCURY_CXXFLAGS)
 
 ##################################
 # What to clean boiler plate code

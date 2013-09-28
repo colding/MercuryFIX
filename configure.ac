@@ -567,6 +567,7 @@ AC_CONFIG_FILES([Makefile
                  utillib/config/Makefile
                  omslib/Makefile
     		 applib/Makefile
+		 applib/fixutils/Makefile
                  applib/fixmsg/Makefile
                  applib/fixmsg_tests/Makefile
                  applib/fixio/Makefile
