@@ -68,24 +68,6 @@ struct sucker_thread_args_t;
 struct splitter_thread_args_t;
 
 /*
- * msg is a pointer to the first byte in a FIX messsage which is
- * included in the checksum calculation. len is the number of bytes
- * included in the checksum calculation.
- */
-static inline int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
-}
-
-/*
  * Outstanding issue: Do Popper and Pusher instances live forever? If
  * yes, how do I handle socket errors with blocking disruptor
  * functions? Hmm, amswer: The disruptors do live forever, but the

@@ -55,14 +55,13 @@
  * performance
  */
 
-// used to detect emminent integer overflow
-#define MAX_TAG__ ((int)((INT_MAX - 9) / 10))
-#define MAX_LENGTH__ ((long long)((LLONG_MAX - 9) / 10))
-
 /*
  * Return the FIX tag as a non-zero integer. *str is a pointer to the
- * first character in the FIX tag. In case of error -1 is returned. 0
- * (zero) is never returned.
+ * first character in the FIX tag which must be of the format:
+ *
+ *    <TAG>=<VALUE>, <TAG> is a positive non-zero integer
+ *
+ * In case of error -1 is returned. 0 (zero) is never returned.
  *
  * Upon return, *str will point to the first character in the tag's
  * value.
@@ -76,13 +75,14 @@
  * This function is more han 3 times faster than the equivalent one
  * based on atoi().
  *
- * Keeping the function here in the header file is consistently 5
- * percent faster that having a regular extern declaration.
+ * Keeping the function as a static inline in this header file is
+ * consistently 5 percent faster that having a regular extern
+ * declaration. I must consider whether to do that or not...
  *
  * This may seem like an immature quest for non-essential performance
  * over good clean code, but it's not. This function is exclusively
  * used in the hot path of the FIX RX message parser, so every little
- * bit of verifiable performance counts.
+ * bit of verifiable performance counts. Decisions, decisions...
  */
 extern int
 get_fix_tag(const char **str);
@@ -110,7 +110,10 @@ get_fix_length_value(const char soh,
 /*
  * Optimized for integers less than 10.000.000.000.
  *
- * Upon return, *str will point to the terminator character.
+ * Upon entry: *str points to the start of the memory which will be
+ * written to.
+ *
+ * Upon return: *str will point to the terminator character.
  *
  * Performance notes:
  *
@@ -121,3 +124,30 @@ extern void
 uint_to_str(const char terminator,
             uint64_t value,
             char **str);
+
+/*
+ * As uint_to_str() but adds leading padding of zeros.
+ *
+ * available: Amount of space available. The last byte in the
+ * available memory will receive the "terminator" character. The
+ * remaining bytes will be used to write:
+ *
+ * value: The unsigned interger to be written. Leading zero ('0') will
+ * be padded if the number of digits in value is less than (available
+ * - 1).
+ *
+ * Upon entry: *str points to the start of the memory where
+ * "available" bytes is available for writting.
+ *
+ * Upon return: *str will point to the terminator character.
+ *
+ * Performance notes:
+ *
+ * This function is roughly 5 times faster than the equivalent one
+ * based on snprintf().
+ */
+extern int
+uint_to_str_zero_padded(const size_t available,
+                        const char terminator,
+                        uint64_t value,
+                        char **str);

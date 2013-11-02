@@ -15,6 +15,8 @@ noinst_LTLIBRARIES = libfixmsg.la
 libfixmsg_la_LDFLAGS = -static
 
 libfixmsg_la_SOURCES = \
+	fix_fields.cpp \
+	fix_fields.h \
 	fix_types.cpp \
 	fix_types.h \
 	fixmsg_rx.cpp \

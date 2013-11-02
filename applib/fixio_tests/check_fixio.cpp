@@ -52,6 +52,8 @@
 #include "stdlib/disruptor/memsizes.h"
 #include "applib/fixio/fixio.h"
 #include "applib/fixutils/db_utils.h"
+#include "applib/fixmsg/fix_fields.h"
+
 
 /*
  * Valid FIX sample messages with the real SOH:

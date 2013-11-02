@@ -38,10 +38,13 @@
  */
 
 #include "fixmsg_utils.h"
-
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+
+// used to detect emminent integer overflow
+#define MAX_TAG__ ((int)((INT_MAX - 9) / 10))
+#define MAX_LENGTH__ ((long long)((LLONG_MAX - 9) / 10))
 
 int
 get_fix_tag(const char **str)
@@ -49,7 +52,7 @@ get_fix_tag(const char **str)
         int num = 0;
         char c = **str;
 
-        // the tag value must be greater than zero
+        // the tag value must be greater than zero and not zero padded
         if (('=' == c) || ('0' == c))
                 return -1;
 
@@ -117,9 +120,9 @@ uint_to_str(const char terminator,
                                 size = 10;
                                 if (value >= 10000000000) {
                                         sprintf(*str, "%llu", value);
-					while ('\0' != **str)
-						++(*str);
-					**str = terminator;
+                                        while ('\0' != **str)
+                                                ++(*str);
+                                        **str = terminator;
                                         return;
                                 }
                         } else if (value >= 100000000) {
@@ -152,8 +155,8 @@ uint_to_str(const char terminator,
                 }
         }
 
-	*str += size;
-	pos = *str;
+        *str += size;
+        pos = *str;
         *pos = terminator;
 
         do {
@@ -161,4 +164,38 @@ uint_to_str(const char terminator,
         } while (value /= 10);
 
         return;
+}
+
+int
+uint_to_str_zero_padded(const size_t available,
+                        const char terminator,
+                        uint64_t value,
+                        char **str)
+{
+        if (available) {
+                int digit;
+                size_t used = 1;
+                char* pos = *str + available;
+
+                *(--pos) = terminator;
+
+                while ((pos != *str)) {
+                        if (used < available) {
+                                digit = value % 10;
+                                value = value / 10;
+                                *(--pos) = '0' + digit;
+                                ++used;
+                        } else {
+                                return 1;
+                        }
+                }
+                if (!value) {
+                        *str += available - 1;
+                        return 0;
+                } else {
+                        return 1;
+                }
+        } else {
+                return 1;
+        }
 }

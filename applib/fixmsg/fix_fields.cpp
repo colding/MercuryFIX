@@ -37,28 +37,11 @@
  * SUCH DAMAGE.
  */
 
-#pragma once
-
-#include <stdlib.h>
-#include <stdint.h>
 #ifdef HAVE_CONFIG_H
     #include "ac_config.h"
 #endif
+#include "fix_fields.h"
 
 /*
- * msg is a pointer to the first byte in a FIX messsage which is
- * included in the checksum calculation. len is the number of bytes
- * included in the checksum calculation.
+ *
  */
-static inline int
-get_FIX_checksum(const uint8_t *msg, size_t len)
-{
-        uint64_t sum = 0;
-        size_t n;
-
-        for (n = 0; n < len; ++n) {
-                sum += (uint64_t)msg[n];
-        }
-
-        return (sum % 256);
-}

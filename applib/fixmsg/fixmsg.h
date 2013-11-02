@@ -123,6 +123,22 @@ public:
 				 const size_t length,
 				 const uint8_t *value);
 
+	/*
+	 * Determines the time to live (ttl) for this particular
+	 * message. The ttl will remain valid for this instance until
+	 * overwritten by another call to set_time_to_live() or
+	 * clone_from().
+	 *
+	 * Messages which are expired will never be re-sent.
+	 *
+	 */
+	void set_time_to_live(const time_t seconds,
+			      const time_t micro_seconds)
+		{
+			ttl_.tv_sec = seconds;
+			ttl_.tv_usec = micro_seconds;
+		};
+
         /*
          * Exposes information required by FIX_PushBase::push(). The
          * first invocation of insert_field() after this method has

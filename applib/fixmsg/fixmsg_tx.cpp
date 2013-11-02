@@ -82,10 +82,11 @@ FIXMessageTX::append_field(const unsigned int tag,
                 //
                 // I'll assume (rather safely I think) that "tag=" is
                 // never more than 21 characters long. Then I'm adding
-                // that to "length + 4" ("4" needed to make room for
-                // "<SOH>10=").
+                // that to "length + 4" (4 bytes is needed to make
+                // room for "<SOH>10=").
 		//
-		// If that makes the buffer overflow, I'll reallocate.
+		// If that would make the buffer overflow, I'll
+		// reallocate.
 
         again:
                 if (25 + length <= buf_size_) {
@@ -133,18 +134,19 @@ FIXMessageTX::expose(const struct timeval **ttl,
                      const char **msg_type)
 {
         if (msg_type_[0] && sending_time_appended_) {
-		*ttl = &ttl_;
 
                 // tack on "10="
                 *(pos_) = '1';
                 *(pos_ + 1) = '0';
                 *(pos_ + 2) = '=';
 
+		*ttl = &ttl_;
                 len = length_ + 3;
                 *data = buf_;
                 *msg_type = msg_type_;
 
-                // don't overwrite leading SOH
+                // re-use already allocated memory but don't overwrite
+                // leading SOH
                 length_ = 1;
                 pos_ = buf_ + 1;
 

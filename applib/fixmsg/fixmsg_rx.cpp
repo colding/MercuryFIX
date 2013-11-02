@@ -104,6 +104,9 @@ FIXMessageRX::init(void)
                 fix_data_tags = fixt11_std_data_tags;
                 break;
         default:
+		/*
+		 * Custom versions must add their own set of tags.
+		 */
                 return 1;
         }
 
@@ -157,7 +160,7 @@ FIXMessageRX::next_field(size_t & length, uint8_t **value)
         retv = get_fix_tag((const char**)&msg_pos);
         if (UNLIKELY__(0 >= retv))
                 return -1;
-        if (UNLIKELY__(10 == retv)) // This is the end - My only friend, the end
+        if (UNLIKELY__(10 == retv)) // This is the end, my only friend, the end
                 return 0;
         *value = msg_pos;
 

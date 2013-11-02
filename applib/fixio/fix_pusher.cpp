@@ -152,7 +152,10 @@
 #include "stdlib/log/log.h"
 #include "applib/fixlib/defines.h"
 #include "applib/fixmsg/fixmsg.h"
+#include "applib/fixmsg/fix_fields.h"
 #include "applib/fixutils/stack_utils.h"
+#include "applib/fixutils/fixmsg_utils.h"
+
 
 /*
  * Layout of FIX pusher data buffer:
@@ -577,7 +580,8 @@ complete_FIX_message(uint64_t * const msg_seq_number,
 
         // add final checksum
         checksum = get_FIX_checksum((uint8_t*)buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD - total_prefix_length, total_prefix_length + *msg_length - 3);
-        sprintf((buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + *msg_length), "%03u%c", checksum, args->soh);
+	char *str = buf + MSG_TYPE_STRING_OFFSET + FIX_BUFFER_RESERVED_HEAD + *msg_length;
+	uint_to_str_zero_padded(4, args->soh, checksum, &str);
 
         // adjust data length to new value
         *msg_length += total_prefix_length + 4; // 4 is CHK<SOH>

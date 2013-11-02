@@ -150,7 +150,9 @@
 #include "applib/fixlib/defines.h"
 #include "applib/fixmsg/fixmsg.h"
 #include "applib/fixmsg/fix_types.h"
+#include "applib/fixmsg/fix_fields.h"
 #include "applib/fixutils/stack_utils.h"
+#include "applib/fixutils/fixmsg_utils.h"
 
 // takes messages from foxtrot and puts them onto delta and echo as
 // appropriate.
@@ -316,6 +318,67 @@ get_sequence_number(const char soh,
         return (ULLONG_MAX != retv ? retv : 0);
 }
 
+/*
+ * This function composes a rather simplistic session level reject
+ * message. It will work for all current FIX version from 4.0 onwards.
+ */
+static int
+send_session_level_reject_message(FIX_PushBase * const pusher,
+				  FIXMessageTX & msg,
+				  const uint64_t rejected_seq_num,
+				  const char * const reason)
+{
+	const struct timeval *ttl;
+	size_t len;
+	const uint8_t *data;
+	const char *msg_type;
+	char seqnum[24];
+	char *pos = seqnum;
+
+	uint_to_str('\0', rejected_seq_num, &pos);
+	
+	if (!msg.append_field(35, 1, (const uint8_t *)"3"))
+		return 0;
+
+	if (!msg.append_field(45, strlen(seqnum), (const uint8_t *)seqnum))
+		return 0;
+
+	if (!msg.append_field(58, strlen(reason), (const uint8_t *)reason))
+		return 0;
+
+	msg.expose(&ttl, len, &data, &msg_type);
+
+	return (pusher->push(ttl, len, data, msg_type) ? 0 : 1);
+}
+
+static int
+send_resend_request_message(FIX_PushBase * const pusher,
+			    FIXMessageTX & msg,
+			    const uint64_t from)
+{
+	const struct timeval *ttl;
+	size_t len;
+	const uint8_t *data;
+	const char *msg_type;
+	char from_num[24];
+	char *pos = from_num;
+
+	uint_to_str('\0', from, &pos);
+	
+	if (!msg.append_field(35, 1, (const uint8_t *)"2"))
+		return 0;
+
+	if (!msg.append_field(45, strlen(from_num), (const uint8_t *)from_num))
+		return 0;
+
+	if (!msg.append_field(16, 1, (const uint8_t *)"0"))
+		return 0;
+
+	msg.expose(&ttl, len, &data, &msg_type);
+
+	return (pusher->push(ttl, len, data, msg_type) ? 0 : 1);
+}
+
 enum FIX_Parse_State
 {
         FindingBeginString,
@@ -361,6 +424,20 @@ splitter_thread_func(void *arg)
                 M_ERROR("splitter thread cannot run");
                 abort();
         }
+
+	FIXMessageTX fixmsg_tx_resend_request(args->soh);
+        if (!fixmsg_tx_resend_request.init()) {
+                M_ERROR("splitter thread cannot run");
+                abort();
+        }
+//	fixmsg_tx_resend_request.append_field(35, strlen("2"), (const uint8_t*)"2");
+
+	FIXMessageTX fixmsg_tx_session_level_reject(args->soh);
+        if (!fixmsg_tx_session_level_reject.init()) {
+                M_ERROR("splitter thread cannot run");
+                abort();
+        }
+//	fixmsg_tx_session_level_reject.append_field(35, strlen("3"), (const uint8_t*)"3");
 
         FIXMessageRX fixmsg_rx = FIXMessageRX::make_fix_message_mem_owner_on_stack(*args->fix_ver, args->soh);
         if (!fixmsg_rx.init()) {
@@ -501,21 +578,23 @@ splitter_thread_func(void *arg)
                                                        bytes_left_to_copy); // <SOH>ya-da ya-da<SOH>10=ABC<SOH>
                                                 sprintf(chksum, "%03u", get_FIX_checksum(delta_entry->content.data, delta_entry->content.size - 7));
                                                 if (memcmp(delta_entry->content.data + delta_entry->content.size - 4, chksum, 3)) // validate checksum
-                                                        goto go_on;
+                                                        goto go_on; // drop it - resend request later when gap is detected
+
+                                                msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
+                                                if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
+                                                        M_ALERT("wrong sequence number recieved: %d - expected: %d", msg_seq_number_recieved, msg_seq_number_expected);
+                                                        --msg_seq_number_expected;
+							send_resend_request_message(args->pusher, fixmsg_tx_resend_request, msg_seq_number_expected);
+                                                        goto go_on; // HANDLE IT - resend request from msg_seq_number_expected to 0 (zero)
+                                                }
 
                                                 msg_type = delta_entry->content.data + *args->begin_string_length + strlen(length_str) + 4;
                                                 if (args->soh == *msg_type) {
                                                         M_ALERT("malformed message type value");
-                                                        goto go_on;
+							send_session_level_reject_message(args->pusher, fixmsg_tx_session_level_reject, msg_seq_number_recieved, "malformed message type value");
+                                                        goto go_on; 
                                                 }
                                                 fix_msg_type = get_fix_msgtype(args->soh, (const char*)msg_type);
-
-                                                msg_seq_number_recieved = get_sequence_number(args->soh, delta_entry->content.size, delta_entry->content.data);
-                                                if (msg_seq_number_recieved != ++msg_seq_number_expected) { // must be equal to the recieved number
-                                                        M_ALERT("wrong sequence number: %d != %d", msg_seq_number_recieved, msg_seq_number_expected);
-                                                        --msg_seq_number_expected;
-                                                        goto go_on;
-                                                }
 
                                                 if (!is_session_message(fix_msg_type)) {
                                                         if (fmt_ResendRequest != fix_msg_type) {
@@ -526,8 +605,8 @@ splitter_thread_func(void *arg)
                                                                 delta_publisher_next_entry_blocking(args->delta, &delta_cursor);
                                                                 delta_entry = delta_ring_buffer_acquire_entry(args->delta, &delta_cursor);
                                                         } else { // ResendRequest recieved
-                                                                intmax_t begin_seqnum = 0;
-                                                                intmax_t end_seqnum = 0;
+                                                                uintmax_t begin_seqnum = 0;
+                                                                uintmax_t end_seqnum = 0;
                                                                 char done = 0x00;
                                                                 int tag;
 
@@ -535,11 +614,11 @@ splitter_thread_func(void *arg)
 
                                                                 do {
                                                                         tag = fixmsg_rx.next_field(value_length, &value);
-                                                                        if (!tag)
+                                                                        if (0 >= tag)
                                                                                 break;
 
                                                                         if (7 == tag) { // BeginSeqNo
-                                                                                begin_seqnum = strtoimax((const char*)value, NULL, 10);
+                                                                                begin_seqnum = strtoumax((const char*)value, NULL, 10);
                                                                                 done |= 0x01;
                                                                         }
 
@@ -553,18 +632,33 @@ splitter_thread_func(void *arg)
                                                                 } while (1);
                                                                 fixmsg_rx.done();
 
-                                                                if (0x11 != done) { // invalid resend request - HANDLE IT
-                                                                        M_ALERT("could not resend");
+								if (0 > tag) { // session level reject
+									M_ALERT("invalid ResendRequest message recieved containing negative tag");
+									send_session_level_reject_message(args->pusher, 
+													  fixmsg_tx_session_level_reject, 
+													  msg_seq_number_recieved,
+													  "invalid ResendRequest message recieved containing negative tag");
+									goto go_on;
+								}
+
+                                                                if (0x11 != done) { // session level reject
+                                                                        M_ALERT("invalid resend request");
+									send_session_level_reject_message(args->pusher, 
+													  fixmsg_tx_session_level_reject, 
+													  msg_seq_number_recieved,
+													  "invalid resend request - missing one or both of tag 7 or tag 16");
+									goto go_on;
                                                                 }
                                                                 if (args->pusher->resend(begin_seqnum, end_seqnum)) {
                                                                         M_ALERT("could not resend");
+									goto go_on;
                                                                 }
                                                         }
                                                 } else {
                                                         if (ECHO_MAX_DATA_SIZE < delta_entry->content.size) {
                                                                 M_ALERT("oversized session message");
                                                                 --msg_seq_number_expected;
-                                                                goto go_on;
+                                                                goto go_on; // HANDLE IT - increase size of queue entries
                                                         }
                                                         args->db->store_recv_msg(msg_seq_number_recieved, delta_entry->content.size, delta_entry->content.data);
                                                         setu32(echo_entry->content, delta_entry->content.size); // msg length
