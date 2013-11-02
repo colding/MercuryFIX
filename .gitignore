@@ -44,8 +44,11 @@ versatile
 test-driver
 check_fixio
 check_fixmsg
+check_fixmsg_utils
 memsizes
 memsizes.h
 cscope*
 compile
+.dirstamp
+
 
