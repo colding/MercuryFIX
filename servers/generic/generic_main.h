@@ -50,7 +50,7 @@
 typedef struct {
         char *identity;
         char *config_source;
-        socket_t socket;
+        int socket;
 } thread_arg_t;
 
 

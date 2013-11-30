@@ -166,7 +166,7 @@ set_signal_handlers()
 static inline thread_arg_t*
 create_thread_arg(const char * const identity,
 		  const char * const source,
-                  const socket_t socket)
+                  const int socket)
 {
         thread_arg_t *thread_arg = (thread_arg_t*)malloc(sizeof(thread_arg_t));
         if (!thread_arg) {
@@ -183,7 +183,7 @@ create_thread_arg(const char * const identity,
                 free(thread_arg);
                 return NULL;
         }
-        thread_arg->socket.socket = socket.socket;
+        thread_arg->socket = socket;
 
         return thread_arg;
 }
@@ -196,7 +196,7 @@ start_server(const bool debug,
         int jval;
         int count;
         int ipc_socket_type;
-        socket_t socket;
+        int socket;
         sigset_t mask;
         struct sigaction sig_act;
         pthread_t thread_id;
@@ -292,7 +292,7 @@ start_server(const bool debug,
                 }
 
                 // create master IPC thread
-                socket.socket = ipc_sockets[MASTER_SOCKET];
+                socket = ipc_sockets[MASTER_SOCKET];
                 thread_arg = create_thread_arg(IDs[count].c_str(), config->config_source, socket);
                 if (!thread_arg) {
                         M_ALERT("no memory");
@@ -344,7 +344,7 @@ start_server(const bool debug,
                 }
 
                 // create master worker thread
-                socket.socket = 0;
+                socket = 0;
                 thread_arg = create_thread_arg(config->default_identity, config->config_source, socket);
                 if (!thread_arg)
                         goto master_err;
@@ -389,7 +389,7 @@ slave:
         /*
          * We are a child process
          */
-	const char *master_identity = strdup(config->default_identity);
+	char *master_identity = strdup(config->default_identity);
 
 	// set new slave identity
 	free(config->default_identity);
@@ -442,7 +442,7 @@ slave:
         }
 
         // create slave IPC thread
-        socket.socket = ipc_sockets[SLAVE_SOCKET];
+        socket = ipc_sockets[SLAVE_SOCKET];
         thread_arg = create_thread_arg(master_identity, config->config_source, socket);
 	free(master_identity);
 	master_identity = NULL;
@@ -460,7 +460,7 @@ slave:
         }
 
         // create slave worker thread
-        socket.socket = 0;
+        socket = 0;
         thread_arg = create_thread_arg(config->default_identity, config->config_source, socket);
         if (!thread_arg)
                 return EXIT_FAILURE;
@@ -510,7 +510,7 @@ generic_main(int argc, char *argv[])
         int debug = 0;
 
         // default configuration file path
-        char *conf_file_path = strdup(MERCURY_DEFAULT_CONFIG_FILE);
+        char *conf_file_path = strdup("" /*MERCURY_DEFAULT_CONFIG_FILE*/);
 
         // current argv index
         int index = 0;

@@ -318,7 +318,7 @@ DEFINE_ENTRY_PUBLISHER_NEXTENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 DEFINE_ENTRY_PUBLISHER_COMMITENTRY_BLOCKING_FUNCTION(charlie_io_t, charlie_);
 
 /*
- * Romeo) One internal publishers, one entry processor,
+ * Romeo) One internal publisher, one entry processor,
  * sizeof(size_t)+sizeof(char*) entry size, 128 entries
  */
 #define ROMEO_QUEUE_LENGTH (128) // MUST be a power of two
@@ -1283,10 +1283,10 @@ FIX_Pusher::resend(const uint64_t start,
 			tx_msg.append_field(123, strlen("Y"), (const uint8_t*)"Y"); // GapFill	
 
 			sprintf(tmp, "%llu", seqnum + 1);
-			tx_msg.append_field(36, strlen(tmp), (const uint8_t*)tmp); // NewSeqNo
+			tx_msg.append_field(36, strlen(tmp), (const uint8_t*)tmp);  // NewSeqNo
 
 			get_sendingtime(tmp);
-			tx_msg.append_field(52, strlen(tmp), (const uint8_t*)tmp); // SendingTime
+			tx_msg.append_field(52, strlen(tmp), (const uint8_t*)tmp);  // SendingTime
 		} else { // resend
 			update_sendingtime(pmsg, tmp);			
 			if (!tx_msg.clone_from(pmsg))

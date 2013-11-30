@@ -47,7 +47,7 @@
 #include "ipc.h"
 
 bool
-recv_result(socket_t socket,
+recv_result(int socket,
             const IPC_Command issuing_cmd,
             IPC_ReturnCode & return_code,
             void * const buf,
@@ -87,7 +87,7 @@ recv_result(socket_t socket,
 
 
 bool
-recv_cmd(socket_t socket,
+recv_cmd(int socket,
          void * const buf,
          const uint32_t buf_len,
          uint32_t *count)
@@ -114,7 +114,7 @@ recv_cmd(socket_t socket,
         }
 
         do {
-                recv_cnt = recvfrom(socket.socket, (void*)((uint8_t*)pos + recv_cnt_acc), buf_len - recv_cnt_acc, MSG_WAITALL, NULL, NULL);
+                recv_cnt = recvfrom(socket, (void*)((uint8_t*)pos + recv_cnt_acc), buf_len - recv_cnt_acc, MSG_WAITALL, NULL, NULL);
                 switch (recv_cnt) {
                 case -1:
                         M_WARNING("error: %s", strerror(errno));
@@ -152,7 +152,7 @@ recv_cmd(socket_t socket,
                 return false;
         }
         while UNLIKELY(recv_cnt_acc < packet_size) {
-                recv_cnt = recvfrom(socket.socket, (void*)((uint8_t*)pos + recv_cnt_acc), buf_len - recv_cnt_acc, MSG_WAITALL, NULL, NULL);
+                recv_cnt = recvfrom(socket, (void*)((uint8_t*)pos + recv_cnt_acc), buf_len - recv_cnt_acc, MSG_WAITALL, NULL, NULL);
                 switch (recv_cnt) {
                 case -1:
                         M_WARNING("error: %s", strerror(errno));
@@ -171,7 +171,7 @@ recv_cmd(socket_t socket,
 }
 
 uint32_t
-send_cmd(socket_t socket,
+send_cmd(int socket,
          IPC_Command cmd,
          const char * const format,
          ...)
@@ -187,7 +187,7 @@ send_cmd(socket_t socket,
 }
 
 uint32_t
-vsend_cmd(socket_t socket,
+vsend_cmd(int socket,
           IPC_Command cmd,
           const char * const format,
           va_list ap)

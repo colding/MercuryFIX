@@ -585,7 +585,7 @@ splitter_thread_func(void *arg)
                                                         M_ALERT("wrong sequence number recieved: %d - expected: %d", msg_seq_number_recieved, msg_seq_number_expected);
                                                         --msg_seq_number_expected;
 							send_resend_request_message(args->pusher, fixmsg_tx_resend_request, msg_seq_number_expected);
-                                                        goto go_on; // HANDLE IT - resend request from msg_seq_number_expected to 0 (zero)
+                                                        goto go_on; // HANDLE IT - resend request from msg_seq_number_expected to 0 (zero == all later messages)
                                                 }
 
                                                 msg_type = delta_entry->content.data + *args->begin_string_length + strlen(length_str) + 4;

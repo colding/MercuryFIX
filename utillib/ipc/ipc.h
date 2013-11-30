@@ -99,7 +99,7 @@
  * including the return code.
  */
 extern bool
-recv_result(socket_t socket,
+recv_result(int socket,
             const IPC_Command issuing_cmd,
             IPC_ReturnCode & result_code,
             void * const buf,
@@ -114,7 +114,7 @@ recv_result(socket_t socket,
  * of received bytes.
  */
 extern bool
-recv_cmd(socket_t socket,
+recv_cmd(int socket,
          void * const buf,
          const uint32_t buf_len,
          uint32_t *count);
@@ -126,13 +126,13 @@ recv_cmd(socket_t socket,
  * occurred, in which case 0 is returned.
  */
 extern uint32_t
-vsend_cmd(socket_t sock,
+vsend_cmd(int sock,
           IPC_Command cmd,
           const char * const format,
           va_list ap);
 
 extern uint32_t
-send_cmd(socket_t sock,
+send_cmd(int sock,
          IPC_Command cmd,
          const char * const format,
          ...);
@@ -140,19 +140,19 @@ send_cmd(socket_t sock,
 static inline IPC_Command
 ipcdata_get_cmd(const ipcdata_t const ipcdata)
 {
-        return (IPC_Command)getul((uint8_t*)ipcdata);
+        return (IPC_Command)getu32((uint8_t*)ipcdata);
 }
 
 static inline IPC_ReturnCode
 ipcdata_get_return_code(const ipcdata_t const ipcdata)
 {
-        return (IPC_ReturnCode)getul((uint8_t*)ipcdata + IPC_RETURN_VALUE_OFFSET);
+        return (IPC_ReturnCode)getu32((uint8_t*)ipcdata + IPC_RETURN_VALUE_OFFSET);
 }
 
 static inline uint32_t
 ipcdata_get_datalen(const ipcdata_t const ipcdata)
 {
-        return getul((uint8_t*)ipcdata + IPC_DATALENGTH_OFFSET);
+        return getu32((uint8_t*)ipcdata + IPC_DATALENGTH_OFFSET);
 }
 
 static inline const uint8_t*
@@ -172,8 +172,8 @@ ipcdata_set_header(const IPC_Command cmd,
                    const uint32_t datalen,
                    ipcdata_t const ipcdata)
 {
-        setul((uint8_t*)ipcdata, (uint32_t)cmd);
-        setul(((uint8_t*)ipcdata + IPC_DATALENGTH_OFFSET), datalen);
+        setu32((uint8_t*)ipcdata, (uint32_t)cmd);
+        setu32(((uint8_t*)ipcdata + IPC_DATALENGTH_OFFSET), datalen);
 }
 
 /*
@@ -197,7 +197,7 @@ ipcdata_free(ipcdata_t ipcdata)
  * false if an error occurred.
  */
 static inline bool
-send_result(socket_t sock,
+send_result(int sock,
             const IPC_ReturnCode res)
 {
 	if (!res) {
@@ -214,7 +214,7 @@ send_result(socket_t sock,
 
         /* ipcdata_set_header(CMD_RESULT, sizeof(uint32_t), (ipcdata_t)buf); */
         /* pos = buf + IPC_HEADER_SIZE; */
-        /* setul(pos, res); */
+        /* setu32(pos, res); */
 
         /* return send_all(sock, buf, IPC_RESULT_SIZE); */
 }
