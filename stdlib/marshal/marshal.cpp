@@ -254,7 +254,7 @@ vmarshal(uint8_t * const buf,
                                 return false;
                         }
                         f = va_arg(ap, double);
-                        ul = pack754_32(f);
+                        ul = pack754_32((float)f);
                         setu32(pos, ul);
                         break;
                 case 'F':

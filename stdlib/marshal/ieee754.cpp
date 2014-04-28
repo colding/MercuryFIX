@@ -80,7 +80,7 @@ pack754(long double f,
         fnorm = fnorm - 1.0;
 
         // calculate the binary form (non-float) of the significand data
-        significand = fnorm * ((1LL<<significand_bits) + 0.5f);
+        significand = (uint64_t)(fnorm * ((1LL<<significand_bits) + 0.5f));
 
         // get the biased exponent
         exp = shift + ((1<<(expbits-1)) - 1); // shift + bias
@@ -141,11 +141,11 @@ pack754_64(double val)
 float
 unpack754_32(uint32_t val)
 {
-        return unpack754(val, 32, 8);
+        return (float)unpack754(val, 32, 8);
 }
 
 double
 unpack754_64(uint64_t val)
 {
-        return unpack754(val, 64, 11);
+        return (double)unpack754(val, 64, 11);
 }
