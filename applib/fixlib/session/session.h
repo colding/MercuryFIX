@@ -60,7 +60,7 @@ public:
 	 * Duplex:
 	 * =======
 	 *
-	 * ConnectToThis - 1 instance created when connection to remote endpoint is
+	 * ConnectToThis - 1 instance created when connection to remote endpoint is actively
 	 *                 established.
 	 *                 dup(2) socket when connection is established to emulate simplex.
 	 *

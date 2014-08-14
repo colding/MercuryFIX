@@ -398,7 +398,6 @@ const char fix_msgtype_string[FIX_MSGTYPES_COUNT][sizeof(uint_fast32_t)+1] =
 extern FIX_MsgType get_fix_msgtype(const char soh,
                                    const char * const str); // first byte in message type value field
 
-
 const FIX_MsgType fix_session_message_types[]
 {
         fmt_Heartbeat,

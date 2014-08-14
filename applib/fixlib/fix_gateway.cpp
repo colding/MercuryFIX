@@ -183,7 +183,7 @@ FIX_Gateway::run(void)
 			default:
 				break;
 			}
-			M_ERROR("error joining FIX session thread: %s", msg);
+			M_ERROR("error joining FIX session thread: %s (%s)", msg, strerror(jval));
 		}
         }
 

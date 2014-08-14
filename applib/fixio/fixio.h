@@ -96,7 +96,7 @@ public:
          *   <SOH>10=
          *
          *
-         * The mentioned tags will be added be the push function and
+         * The mentioned tags will be added by the push function and
          * so will the checksum value.
          *
 	 * ttl: Time To Live, message will not be resend if ttl has

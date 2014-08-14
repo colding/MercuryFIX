@@ -74,7 +74,7 @@ public:
                 {
                 };
 
-        ~FIXMessageTX()
+        virtual ~FIXMessageTX()
                 {
                         free(buf_);
                 };
@@ -210,7 +210,7 @@ public:
 
         static FIXMessageRX *make_fix_message_with_provided_mem_on_heap(const FIX_Version version,
                                                                         const char soh);
-        ~FIXMessageRX()
+        virtual ~FIXMessageRX()
                 {
                         if (owns_memory_)
                                 free(msg_);

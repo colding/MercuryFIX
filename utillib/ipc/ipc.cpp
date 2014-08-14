@@ -128,7 +128,7 @@ recv_cmd(int socket,
 			 * transmitting or fail within that limit.
 			 *
 			 * Using UNLIKELY to tell the compiler that we
-			 * only want this to happen once.
+			 * only think this will happen once in a while.
 			 */
                         if UNLIKELY(!recv_cnt_acc) {
                                 t.seconds = 60;
